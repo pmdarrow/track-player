@@ -15,9 +15,29 @@ juce::String formatSeconds(double seconds) {
 // might end up as a drag source in the same DragAndDropContainer.
 constexpr const char* kDragSourceTag = "playlist-row:";
 
-// Shared accent blue — row selection fill and progress-slider thumb both use
-// it so the two clearly read as part of the same visual system.
-const juce::Colour kAccentBlue{0xff2a6df4};
+// Palette tuned toward the macOS dark-player reference: a near-black playlist,
+// a slightly raised transport band, saturated blue selection/progress, neutral
+// grey controls, and the system-ish green active-track indicator.
+const juce::Colour kPlaylistBackground{0xff1b1d22};
+const juce::Colour kControlsBackground{0xff2b2d33};
+const juce::Colour kAccentBlue{0xff0a5fd7};
+const juce::Colour kPlayingGreen{0xff32d74b};
+const juce::Colour kButtonFill{0xff575b63};
+const juce::Colour kButtonOutline{0xff6a6e76};
+const juce::Colour kButtonText{0xfff2f3f5};
+const juce::Colour kPrimaryText{0xfff4f6f8};
+const juce::Colour kSecondaryText{0xffd3d5da};
+const juce::Colour kTimeText{0xffd7d9de};
+const juce::Colour kProgressTrack{0xff45484f};
+const juce::Colour kProgressThumb{0xff9da0a6};
+
+void styleTransportButton(juce::Button& button) {
+  button.setColour(juce::TextButton::buttonColourId, kButtonFill);
+  button.setColour(juce::TextButton::buttonOnColourId, kButtonFill.brighter(0.06f));
+  button.setColour(juce::TextButton::textColourOffId, kButtonText);
+  button.setColour(juce::TextButton::textColourOnId, kButtonText);
+  button.setColour(juce::ComboBox::outlineColourId, kButtonOutline);
+}
 }  // namespace
 
 // ── PlayPauseButton ─────────────────────────────────────────────────────────
@@ -104,15 +124,19 @@ void PlaylistRowComponent::mouseDrag(const juce::MouseEvent& e) {
 void PlaylistRowComponent::paint(juce::Graphics& g) {
   if (rowNumber < 0 || rowNumber >= processor.getNumTracks()) return;
 
+  const auto rowBackground = getLocalBounds().toFloat().reduced(0.0f, 1.0f);
+
   if (isSelected) {
-    g.fillAll(kAccentBlue);
+    g.setColour(kAccentBlue);
+    g.fillRoundedRectangle(rowBackground, 7.0f);
   } else if (hovered) {
     // Subtle lighten-on-hover; distinct from the blue selection tint so the
     // user can tell which row is focused vs. merely under the cursor.
-    g.fillAll(juce::Colours::white.withAlpha(0.08f));
+    g.setColour(juce::Colours::white.withAlpha(0.06f));
+    g.fillRoundedRectangle(rowBackground, 7.0f);
   }
 
-  g.setColour(juce::Colours::white.withAlpha(isSelected ? 1.0f : 0.9f));
+  g.setColour(isSelected ? kPrimaryText : kSecondaryText);
   g.setFont(juce::Font(juce::FontOptions(16.0f)));
   g.drawText(
       processor.getTrackDisplayName(rowNumber),
@@ -132,7 +156,7 @@ void PlaylistRowComponent::paint(juce::Graphics& g) {
         kDiameter,
         kDiameter
     );
-    g.setColour(juce::Colours::limegreen);
+    g.setColour(kPlayingGreen);
     g.fillEllipse(dot);
   }
 }
@@ -182,7 +206,7 @@ void PlaylistListBox::paintOverChildren(juce::Graphics& g) {
           ? getRowPosition(insertionRow - 1, /*relativeToComponentTopLeft=*/true).getBottom()
           : 0;
 
-  g.setColour(juce::Colours::limegreen);
+  g.setColour(kPlayingGreen);
   g.fillRect(0, y - 1, getWidth(), 2);
 }
 
@@ -211,7 +235,8 @@ TrackPlayerEditor::TrackPlayerEditor(TrackPlayerProcessor& p)
   playlistBox.setModel(this);
   playlistBox.setRowHeight(34);
   playlistBox.setMultipleSelectionEnabled(false);
-  playlistBox.setColour(juce::ListBox::backgroundColourId, juce::Colour(0xff1d1d1f));
+  playlistBox.setColour(juce::ListBox::backgroundColourId, kPlaylistBackground);
+  playlistBox.setColour(juce::ListBox::outlineColourId, juce::Colours::transparentBlack);
   playlistBox.setReorderAction([this](int fromIndex, int toIndex) {
     player.reorderTrack(fromIndex, toIndex);
     // reorderTrack's `toIndex` is an insertion point in the original list;
@@ -228,9 +253,11 @@ TrackPlayerEditor::TrackPlayerEditor(TrackPlayerProcessor& p)
   addAndMakeVisible(playlistBox);
 
   addButton.onClick = [this] { openAddTrackDialog(); };
+  styleTransportButton(addButton);
   addAndMakeVisible(addButton);
 
   removeButton.onClick = [this] { removeSelectedTrack(); };
+  styleTransportButton(removeButton);
   addAndMakeVisible(removeButton);
 
   playButton.onClick = [this] {
@@ -239,11 +266,14 @@ TrackPlayerEditor::TrackPlayerEditor(TrackPlayerProcessor& p)
     // for the next timer tick.
     refresh();
   };
+  styleTransportButton(playButton);
   addAndMakeVisible(playButton);
 
   progressSlider.setSliderStyle(juce::Slider::LinearHorizontal);
   progressSlider.setTextBoxStyle(juce::Slider::NoTextBox, false, 0, 0);
-  progressSlider.setColour(juce::Slider::thumbColourId, kAccentBlue);
+  progressSlider.setColour(juce::Slider::trackColourId, kAccentBlue);
+  progressSlider.setColour(juce::Slider::backgroundColourId, kProgressTrack);
+  progressSlider.setColour(juce::Slider::thumbColourId, kProgressThumb);
   // Normalised [0,1] — the slider is track-agnostic; we multiply by the
   // current track length on seek.
   progressSlider.setRange(0.0, 1.0);
@@ -261,7 +291,7 @@ TrackPlayerEditor::TrackPlayerEditor(TrackPlayerProcessor& p)
   auto initTimeLabel = [this](juce::Label& label, juce::Justification j) {
     label.setJustificationType(j);
     label.setFont(juce::Font(juce::FontOptions(15.0f)));
-    label.setColour(juce::Label::textColourId, juce::Colours::white.withAlpha(0.7f));
+    label.setColour(juce::Label::textColourId, kTimeText);
     label.setText("0:00", juce::dontSendNotification);
     addAndMakeVisible(label);
   };
@@ -282,7 +312,12 @@ TrackPlayerEditor::TrackPlayerEditor(TrackPlayerProcessor& p)
 TrackPlayerEditor::~TrackPlayerEditor() { stopTimer(); }
 
 void TrackPlayerEditor::paint(juce::Graphics& g) {
-  g.fillAll(getLookAndFeel().findColour(juce::ResizableWindow::backgroundColourId));
+  g.fillAll(kPlaylistBackground);
+
+  auto controlsBand = getLocalBounds();
+  controlsBand.removeFromTop(juce::jmax(0, getHeight() - 66));
+  g.setColour(kControlsBackground);
+  g.fillRect(controlsBand);
 }
 
 void TrackPlayerEditor::resized() {
