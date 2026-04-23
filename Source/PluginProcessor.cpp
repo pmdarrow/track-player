@@ -81,8 +81,13 @@ juce::String TrackPlayerProcessor::getTrackDisplayName(int index) const {
   return playlist[static_cast<size_t>(index)].displayName;
 }
 
-void TrackPlayerProcessor::addTrack(const juce::File& file) {
-  if (!file.existsAsFile()) return;
+juce::String TrackPlayerProcessor::getSupportedAudioFileWildcard() const {
+  const auto wildcard = formatManager.getWildcardForAllFormats();
+  return wildcard.isNotEmpty() ? wildcard : "*.wav";
+}
+
+bool TrackPlayerProcessor::addTrack(const juce::File& file) {
+  if (!canOpenAudioFile(file)) return false;
 
   Track track;
   track.file = file;
@@ -93,6 +98,8 @@ void TrackPlayerProcessor::addTrack(const juce::File& file) {
   // loaded and the progress UI has a meaningful length to display. We load
   // stopped — user-driven Play starts audio.
   if (playlist.size() == 1) loadIntoTransport(0, false);
+
+  return true;
 }
 
 void TrackPlayerProcessor::removeTrack(int index) {
@@ -213,6 +220,15 @@ void TrackPlayerProcessor::unloadTransport() {
   currentIndex = -1;
 }
 
+bool TrackPlayerProcessor::canOpenAudioFile(const juce::File& file) {
+  if (!file.existsAsFile()) return false;
+
+  std::unique_ptr<juce::AudioFormatReader> reader(formatManager.createReaderFor(file));
+  if (reader == nullptr) return false;
+
+  return reader->sampleRate > 0.0 && reader->numChannels > 0 && reader->lengthInSamples > 0;
+}
+
 // ── Persistence ──────────────────────────────────────────────────────────────
 
 void TrackPlayerProcessor::getStateInformation(juce::MemoryBlock& destData) {
@@ -249,10 +265,10 @@ void TrackPlayerProcessor::setStateInformation(const void* data, int sizeInBytes
   auto list = state.getChildWithName("Playlist");
   for (int i = 0; i < list.getNumChildren(); ++i) {
     const juce::File file(list.getChild(i).getProperty("path").toString());
-    // Silently drop entries whose files no longer exist — a plugin recall on
-    // a machine that's missing some of the original files should still open
-    // cleanly with whatever remains.
-    if (file.existsAsFile()) {
+    // Silently drop entries whose files no longer exist or cannot be decoded.
+    // A recall on a machine that's missing or has changed some original files
+    // should still open cleanly with whatever remains.
+    if (canOpenAudioFile(file)) {
       playlist.push_back({file, file.getFileName()});
     }
   }

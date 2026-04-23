@@ -9,7 +9,7 @@
 #include <memory>
 #include <vector>
 
-// AU instrument that plays a user-supplied WAV playlist.
+// AU instrument that plays a user-supplied audio-file playlist.
 //
 // Threading model:
 //   - The UI (message) thread owns the playlist and all transport control calls
@@ -61,7 +61,8 @@ class TrackPlayerProcessor final : public juce::AudioProcessor {
   juce::String getTrackDisplayName(int index) const;
   int getCurrentTrackIndex() const noexcept { return currentIndex; }
 
-  void addTrack(const juce::File& file);
+  bool addTrack(const juce::File& file);
+  juce::String getSupportedAudioFileWildcard() const;
   void removeTrack(int index);
   // Loads `index` into the transport. A no-op if the same track is already
   // loaded and `andPlay` doesn't change the running state.
@@ -89,6 +90,7 @@ class TrackPlayerProcessor final : public juce::AudioProcessor {
 
   void loadIntoTransport(int index, bool andPlay);
   void unloadTransport();
+  bool canOpenAudioFile(const juce::File& file);
 
   juce::AudioFormatManager formatManager;
   // Background thread powering the read-ahead BufferingAudioSource that

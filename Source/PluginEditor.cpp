@@ -39,6 +39,8 @@ constexpr int kMaxEditorH = 800;
 constexpr int kControlsBarH = 56;
 constexpr int kControlsRowH = 36;
 constexpr int kControlsVerticalMargin = (kControlsBarH - kControlsRowH) / 2;
+constexpr int kPlaylistTopInset = 0;
+constexpr int kPlaylistRightInset = 4;
 
 class TransportSliderLookAndFeel final : public juce::LookAndFeel_V4 {
  public:
@@ -48,8 +50,98 @@ class TransportSliderLookAndFeel final : public juce::LookAndFeel_V4 {
   }
 };
 
+class EditorLookAndFeel final : public juce::LookAndFeel_V4 {
+ public:
+  void drawCornerResizer(
+      juce::Graphics& g, int width, int height, bool isMouseOver, bool isMouseDragging
+  ) override {
+    auto handleColour = kButtonOutline.withAlpha(0.58f);
+    if (isMouseDragging)
+      handleColour = kButtonOutline.withAlpha(0.86f);
+    else if (isMouseOver)
+      handleColour = kButtonOutline.withAlpha(0.72f);
+
+    g.setColour(handleColour);
+
+    constexpr float kLineThickness = 1.5f;
+    for (int i = 0; i < 3; ++i) {
+      const float offset = 4.0f + (static_cast<float>(i) * 5.0f);
+      g.drawLine(
+          static_cast<float>(width) - offset,
+          static_cast<float>(height) - 1.5f,
+          static_cast<float>(width) - 1.5f,
+          static_cast<float>(height) - offset,
+          kLineThickness
+      );
+    }
+  }
+};
+
+// JUCE exposes scrollbar colours, but not the exact thumb width/placement we
+// need here. Override only this paint hook so the playlist can keep a narrow
+// right-aligned thumb with breathing room between rows and the scroll affordance.
+class PlaylistLookAndFeel final : public juce::LookAndFeel_V4 {
+ public:
+  int getDefaultScrollbarWidth() override { return 16; }
+
+  void drawScrollbar(
+      juce::Graphics& g,
+      juce::ScrollBar& scrollbar,
+      int x,
+      int y,
+      int width,
+      int height,
+      bool isScrollbarVertical,
+      int thumbStartPosition,
+      int thumbSize,
+      bool isMouseOver,
+      bool isMouseDown
+  ) override {
+    if (thumbSize <= 0) return;
+
+    const auto bounds = juce::Rectangle<int>(x, y, width, height).toFloat();
+    const float availableThickness = isScrollbarVertical ? bounds.getWidth() : bounds.getHeight();
+    const float thickness = juce::jmin(8.0f, availableThickness);
+
+    auto thumbColour = kProgressThumb.withAlpha(0.72f);
+    if (isMouseDown)
+      thumbColour = kProgressThumb;
+    else if (isMouseOver || scrollbar.isMouseOver())
+      thumbColour = kProgressThumb.withAlpha(0.9f);
+
+    const float inset = juce::jmin(3.0f, static_cast<float>(thumbSize) * 0.25f);
+    const float paintedThumbSize = juce::jmax(2.0f, static_cast<float>(thumbSize) - (inset * 2.0f));
+    const auto thumbBounds = isScrollbarVertical
+                                 ? juce::Rectangle<float>(
+                                       bounds.getRight() - thickness,
+                                       static_cast<float>(thumbStartPosition) + inset,
+                                       thickness,
+                                       paintedThumbSize
+                                   )
+                                 : juce::Rectangle<float>(
+                                       static_cast<float>(thumbStartPosition) + inset,
+                                       bounds.getBottom() - thickness,
+                                       paintedThumbSize,
+                                       thickness
+                                   );
+
+    g.setColour(thumbColour);
+    g.fillRoundedRectangle(thumbBounds, thickness * 0.5f);
+  }
+};
+
 TransportSliderLookAndFeel& transportSliderLookAndFeel() {
   static TransportSliderLookAndFeel lookAndFeel;
+  return lookAndFeel;
+}
+
+EditorLookAndFeel& editorLookAndFeel() {
+  static EditorLookAndFeel lookAndFeel;
+  return lookAndFeel;
+}
+
+PlaylistLookAndFeel& playlistLookAndFeel() {
+  static PlaylistLookAndFeel lookAndFeel;
   return lookAndFeel;
 }
 
@@ -254,6 +346,7 @@ TrackPlayerEditor::TrackPlayerEditor(TrackPlayerProcessor& p)
   const int editorW = juce::jlimit(kMinEditorW, kMaxEditorW, player.getEditorWidth());
   const int editorH = juce::jlimit(kMinEditorH, kMaxEditorH, player.getEditorHeight());
 
+  setLookAndFeel(&editorLookAndFeel());
   setSize(editorW, editorH);
   setResizeLimits(kMinEditorW, kMinEditorH, kMaxEditorW, kMaxEditorH);
   setResizable(true, true);
@@ -263,6 +356,9 @@ TrackPlayerEditor::TrackPlayerEditor(TrackPlayerProcessor& p)
   playlistBox.setMultipleSelectionEnabled(false);
   playlistBox.setColour(juce::ListBox::backgroundColourId, kPlaylistBackground);
   playlistBox.setColour(juce::ListBox::outlineColourId, juce::Colours::transparentBlack);
+  playlistBox.setLookAndFeel(&playlistLookAndFeel());
+  if (auto* viewport = playlistBox.getViewport())
+    viewport->setScrollBarThickness(playlistLookAndFeel().getDefaultScrollbarWidth());
   playlistBox.setReorderAction([this](int fromIndex, int toIndex) {
     player.reorderTrack(fromIndex, toIndex);
     // reorderTrack's `toIndex` is an insertion point in the original list;
@@ -338,6 +434,8 @@ TrackPlayerEditor::TrackPlayerEditor(TrackPlayerProcessor& p)
 
 TrackPlayerEditor::~TrackPlayerEditor() {
   progressSlider.setLookAndFeel(nullptr);
+  playlistBox.setLookAndFeel(nullptr);
+  setLookAndFeel(nullptr);
   stopTimer();
 }
 
@@ -353,13 +451,16 @@ void TrackPlayerEditor::paint(juce::Graphics& g) {
 void TrackPlayerEditor::resized() {
   player.setEditorSize(getWidth(), getHeight());
 
-  auto bounds = getLocalBounds().reduced(kEditorPadding);
+  auto bounds = getLocalBounds();
   auto controlsBand = getLocalBounds();
   controlsBand.removeFromTop(juce::jmax(0, getHeight() - kControlsBarH));
 
   // Bottom transport row, left→right: play, elapsed, slider, total, Add, Remove.
   auto controls = controlsBand.reduced(kEditorPadding, kControlsVerticalMargin);
-  bounds.removeFromBottom(kControlsBarH - kEditorPadding);
+  bounds.removeFromBottom(kControlsBarH);
+  bounds.removeFromTop(kPlaylistTopInset);
+  bounds.removeFromLeft(kEditorPadding);
+  bounds.setRight(getWidth() - kPlaylistRightInset);
   playlistBox.setBounds(bounds);
 
   constexpr int kButtonH = 34;
@@ -475,9 +576,9 @@ void TrackPlayerEditor::refresh() {
 
 void TrackPlayerEditor::openAddTrackDialog() {
   fileChooser = std::make_unique<juce::FileChooser>(
-      "Add tracks to playlist",
+      "Add audio files to playlist",
       juce::File::getSpecialLocation(juce::File::userMusicDirectory),
-      "*.wav"
+      player.getSupportedAudioFileWildcard()
   );
 
   const auto flags = juce::FileBrowserComponent::openMode |
@@ -489,12 +590,14 @@ void TrackPlayerEditor::openAddTrackDialog() {
     if (files.isEmpty()) return;
 
     const int previousCount = player.getNumTracks();
-    for (const auto& file : files) player.addTrack(file);
+    bool addedAny = false;
+    for (const auto& file : files)
+      if (player.addTrack(file)) addedAny = true;
 
     // Select the first newly-added track — the user probably wants to interact
     // with what they just dropped in (play it, or remove it if misadded), and
     // this also arms the Remove button without an extra click.
-    if (player.getNumTracks() > previousCount) playlistBox.selectRow(previousCount);
+    if (addedAny) playlistBox.selectRow(previousCount);
 
     refresh();
   });

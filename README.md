@@ -1,12 +1,13 @@
 # Track Player
 
-An Audio Unit instrument plugin for macOS that plays a WAV playlist, with a
-standalone app target for development. Built with [JUCE](https://juce.com/) 8
-and CMake.
+An Audio Unit instrument plugin for macOS that plays a playlist of supported
+audio files, with a standalone app target for development. Built with
+[JUCE](https://juce.com/) 8 and CMake.
 
 Features:
 
-- Add and remove WAV files from anywhere on disk.
+- Add and remove supported audio files from anywhere on disk, including WAV,
+  AIFF, FLAC, OGG, MP3, M4A, AAC, and other CoreAudio-backed formats on macOS.
 - Play / pause and seek via a draggable progress slider.
 - Single click to select a track, double click (or the play button) to play it.
 - Auto-advances to the next track at end-of-file.
@@ -83,8 +84,8 @@ four-character code and `Pdar` is the manufacturer code — both defined in
 1. Launch an AU-compatible host (Logic Pro, GarageBand, Ableton Live 11+,
    Reaper, AUM, …).
 2. Create a new instrument track and choose **Peter Darrow → Track Player**.
-3. Click **Add** to pick one or more WAV files (from anywhere on disk) and
-   drop them into the playlist. **Remove** deletes the selected track.
+3. Click **Add** to pick one or more supported audio files (from anywhere on
+   disk) and drop them into the playlist. **Remove** deletes the selected track.
 4. Single-click a row to select it. Double-click a row (or use the round play
    button in the transport row) to start playback. The progress slider scrubs
    the current track; seeks commit on release. Playback auto-advances to the
