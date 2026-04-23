@@ -2,7 +2,7 @@
 
 #include <cmath>
 
-#include "TrackPlayerTheme.h"
+#include "SimpleAudioPlayerTheme.h"
 
 namespace {
 
@@ -33,7 +33,7 @@ void PlaylistRowComponent::paint(juce::Graphics& g) {
   const auto rowBackground = getLocalBounds().toFloat().reduced(0.0f, 1.0f);
 
   if (isSelected) {
-    g.setColour(track_player_ui::kAccentBlue);
+    g.setColour(simple_audio_player_ui::kAccentBlue);
     g.fillRoundedRectangle(rowBackground, 7.0f);
   } else if (hovered) {
     // Subtle lighten-on-hover; distinct from the blue selection tint so the
@@ -42,7 +42,9 @@ void PlaylistRowComponent::paint(juce::Graphics& g) {
     g.fillRoundedRectangle(rowBackground, 7.0f);
   }
 
-  g.setColour(isSelected ? track_player_ui::kPrimaryText : track_player_ui::kSecondaryText);
+  g.setColour(
+      isSelected ? simple_audio_player_ui::kPrimaryText : simple_audio_player_ui::kSecondaryText
+  );
   g.setFont(juce::Font(juce::FontOptions(16.0f)));
   g.drawText(
       processor.getTrackDisplayName(rowNumber),
@@ -64,7 +66,7 @@ void PlaylistRowComponent::paint(juce::Graphics& g) {
     const float x0 = static_cast<float>(getWidth()) - 10.0f - kIndicatorW;
     const float centreY = static_cast<float>(getHeight()) * 0.5f;
 
-    g.setColour(track_player_ui::kPlayingGreen);
+    g.setColour(simple_audio_player_ui::kPlayingGreen);
 
     for (int i = 0; i < 3; ++i) {
       const float phase = static_cast<float>(t) + (static_cast<float>(i) * 1.9f);
@@ -118,7 +120,7 @@ void PlaylistListBox::paintOverChildren(juce::Graphics& g) {
           ? getRowPosition(insertionRow - 1, /*relativeToComponentTopLeft=*/true).getBottom()
           : 0;
 
-  g.setColour(track_player_ui::kPlayingGreen);
+  g.setColour(simple_audio_player_ui::kPlayingGreen);
   g.fillRect(0, y - 1, getWidth(), 2);
 }
 

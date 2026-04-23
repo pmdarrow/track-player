@@ -2,7 +2,7 @@
 
 #include <juce_gui_basics/juce_gui_basics.h>
 
-namespace track_player_ui {
+namespace simple_audio_player_ui {
 
 // Palette tuned toward the macOS dark-player reference: a near-black playlist,
 // a slightly raised transport band, saturated blue selection/progress, neutral
@@ -37,4 +37,4 @@ juce::LookAndFeel_V4& playlistLookAndFeel();
 
 void styleTransportButton(juce::Button& button);
 
-}  // namespace track_player_ui
+}  // namespace simple_audio_player_ui

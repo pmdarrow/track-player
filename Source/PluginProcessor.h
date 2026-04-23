@@ -18,10 +18,10 @@
 //     so the audio thread can safely pull samples while the UI mutates.
 //   - A dedicated TimeSliceThread does file read-ahead so the audio thread
 //     never touches disk inside processBlock().
-class TrackPlayerProcessor final : public juce::AudioProcessor {
+class SimpleAudioPlayerProcessor final : public juce::AudioProcessor {
  public:
-  TrackPlayerProcessor();
-  ~TrackPlayerProcessor() override;
+  SimpleAudioPlayerProcessor();
+  ~SimpleAudioPlayerProcessor() override;
 
   void prepareToPlay(double sampleRate, int samplesPerBlock) override;
   void releaseResources() override;
@@ -31,7 +31,7 @@ class TrackPlayerProcessor final : public juce::AudioProcessor {
   juce::AudioProcessorEditor* createEditor() override;
   bool hasEditor() const override { return true; }
 
-  const juce::String getName() const override { return "Track Player"; }
+  const juce::String getName() const override { return "Simple Audio Player"; }
   // AU Music Devices must advertise MIDI input (IS_SYNTH=TRUE). MIDI is accepted
   // but ignored — playback is controlled from the UI.
   bool acceptsMidi() const override { return true; }
@@ -96,7 +96,7 @@ class TrackPlayerProcessor final : public juce::AudioProcessor {
   // Background thread powering the read-ahead BufferingAudioSource that
   // AudioTransportSource wraps around our reader source. Keeps disk I/O off the
   // audio thread.
-  juce::TimeSliceThread readAheadThread{"TrackPlayer Read-Ahead"};
+  juce::TimeSliceThread readAheadThread{"Simple Audio Player Read-Ahead"};
   std::unique_ptr<juce::AudioFormatReaderSource> readerSource;
   juce::AudioTransportSource transport;
 
@@ -112,5 +112,5 @@ class TrackPlayerProcessor final : public juce::AudioProcessor {
   std::atomic<int> editorWidth{600};
   std::atomic<int> editorHeight{400};
 
-  JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(TrackPlayerProcessor)
+  JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(SimpleAudioPlayerProcessor)
 };

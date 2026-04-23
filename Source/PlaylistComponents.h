@@ -15,10 +15,10 @@ class PlaylistRowComponent final : public juce::Component {
  public:
   using PlayAction = std::function<void(int)>;
 
-  PlaylistRowComponent(const TrackPlayerProcessor& processorIn, PlayAction playActionIn)
+  PlaylistRowComponent(const SimpleAudioPlayerProcessor& processorIn, PlayAction playActionIn)
       : processor(processorIn), onPlay(std::move(playActionIn)) {}
 
-  // Called by TrackPlayerEditor::refreshComponentForRow every time ListBox
+  // Called by SimpleAudioPlayerEditor::refreshComponentForRow every time ListBox
   // wants to (re)use this row for a different list index or selection state.
   void setRowInfo(int newRow, bool newSelected) {
     if (newRow == rowNumber && newSelected == isSelected) return;
@@ -53,7 +53,7 @@ class PlaylistRowComponent final : public juce::Component {
   // the initial press to distinguish it from a click or double-click.
   void mouseDrag(const juce::MouseEvent& e) override;
 
-  const TrackPlayerProcessor& processor;
+  const SimpleAudioPlayerProcessor& processor;
   PlayAction onPlay;
   int rowNumber{-1};
   bool isSelected{false};

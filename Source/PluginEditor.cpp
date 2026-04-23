@@ -2,9 +2,9 @@
 
 #include <cmath>
 
-#include "TrackPlayerTheme.h"
+#include "SimpleAudioPlayerTheme.h"
 
-namespace ui = track_player_ui;
+namespace ui = simple_audio_player_ui;
 
 namespace {
 // Guards against negatives and NaN/inf — transport length/position can in
@@ -17,9 +17,9 @@ juce::String formatSeconds(double seconds) {
 }
 }  // namespace
 
-// ── TrackPlayerEditor ───────────────────────────────────────────────────────
+// ── SimpleAudioPlayerEditor ───────────────────────────────────────────────────────
 
-TrackPlayerEditor::TrackPlayerEditor(TrackPlayerProcessor& p)
+SimpleAudioPlayerEditor::SimpleAudioPlayerEditor(SimpleAudioPlayerProcessor& p)
     : AudioProcessorEditor(&p), player(p) {
   const int editorW = juce::jlimit(ui::kMinEditorW, ui::kMaxEditorW, player.getEditorWidth());
   const int editorH = juce::jlimit(ui::kMinEditorH, ui::kMaxEditorH, player.getEditorHeight());
@@ -110,14 +110,14 @@ TrackPlayerEditor::TrackPlayerEditor(TrackPlayerProcessor& p)
   startTimerHz(30);
 }
 
-TrackPlayerEditor::~TrackPlayerEditor() {
+SimpleAudioPlayerEditor::~SimpleAudioPlayerEditor() {
   progressSlider.setLookAndFeel(nullptr);
   playlistBox.setLookAndFeel(nullptr);
   setLookAndFeel(nullptr);
   stopTimer();
 }
 
-void TrackPlayerEditor::paint(juce::Graphics& g) {
+void SimpleAudioPlayerEditor::paint(juce::Graphics& g) {
   g.fillAll(ui::kPlaylistBackground);
 
   auto controlsBand = getLocalBounds();
@@ -126,7 +126,7 @@ void TrackPlayerEditor::paint(juce::Graphics& g) {
   g.fillRect(controlsBand);
 }
 
-void TrackPlayerEditor::resized() {
+void SimpleAudioPlayerEditor::resized() {
   player.setEditorSize(getWidth(), getHeight());
 
   auto bounds = getLocalBounds();
@@ -171,9 +171,9 @@ void TrackPlayerEditor::resized() {
 
 // ── ListBoxModel ────────────────────────────────────────────────────────────
 
-int TrackPlayerEditor::getNumRows() { return player.getNumTracks(); }
+int SimpleAudioPlayerEditor::getNumRows() { return player.getNumTracks(); }
 
-juce::Component* TrackPlayerEditor::refreshComponentForRow(
+juce::Component* SimpleAudioPlayerEditor::refreshComponentForRow(
     int rowNumber, bool isRowSelected, juce::Component* existingComponentToUpdate
 ) {
   // ListBox owns the row component. On the first call existingComponentToUpdate
@@ -189,7 +189,7 @@ juce::Component* TrackPlayerEditor::refreshComponentForRow(
   return row;
 }
 
-void TrackPlayerEditor::playRow(int row) {
+void SimpleAudioPlayerEditor::playRow(int row) {
   if (row < 0 || row >= player.getNumTracks()) return;
   player.selectTrack(row, true);
   // Align the list selection with the just-started track so Remove targets
@@ -200,7 +200,7 @@ void TrackPlayerEditor::playRow(int row) {
 
 // ── Timer / refresh ─────────────────────────────────────────────────────────
 
-void TrackPlayerEditor::timerCallback() {
+void SimpleAudioPlayerEditor::timerCallback() {
   // Auto-advance at EOF so a multi-track playlist actually plays through. We
   // do this in the timer rather than a transport change listener because
   // AudioTransportSource stops itself silently on stream-finished.
@@ -212,7 +212,7 @@ void TrackPlayerEditor::timerCallback() {
   refresh();
 }
 
-void TrackPlayerEditor::refresh() {
+void SimpleAudioPlayerEditor::refresh() {
   const int numTracks = player.getNumTracks();
   const int currentIndex = player.getCurrentTrackIndex();
   const bool playing = player.isPlaying();
@@ -252,7 +252,7 @@ void TrackPlayerEditor::refresh() {
 
 // ── File add / remove ──────────────────────────────────────────────────────
 
-void TrackPlayerEditor::openAddTrackDialog() {
+void SimpleAudioPlayerEditor::openAddTrackDialog() {
   fileChooser = std::make_unique<juce::FileChooser>(
       "Add audio files to playlist",
       juce::File::getSpecialLocation(juce::File::userMusicDirectory),
@@ -281,7 +281,7 @@ void TrackPlayerEditor::openAddTrackDialog() {
   });
 }
 
-void TrackPlayerEditor::removeSelectedTrack() {
+void SimpleAudioPlayerEditor::removeSelectedTrack() {
   const int selected = playlistBox.getSelectedRow();
   if (selected < 0) return;
   player.removeTrack(selected);

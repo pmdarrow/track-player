@@ -7,7 +7,7 @@ if(APPLE)
     # For distribution, override with: -DCMAKE_OSX_ARCHITECTURES=x86_64;arm64
 endif()
 
-project(TrackPlayer VERSION 1.0.0 LANGUAGES C CXX)
+project(SimpleAudioPlayer VERSION 1.0.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -16,7 +16,7 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 # Emit build/compile_commands.json for clang-tidy / IDE tooling.
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-option(TRACK_PLAYER_COPY_PLUGIN_AFTER_BUILD
+option(SIMPLE_AUDIO_PLAYER_COPY_PLUGIN_AFTER_BUILD
     "Copy built plugin formats into the current user's plugin folders"
     ON
 )
@@ -43,22 +43,22 @@ foreach(_t ${_juce_targets})
     endif()
 endforeach()
 
-juce_add_plugin(TrackPlayer
+juce_add_plugin(SimpleAudioPlayer
     COMPANY_NAME              "Peter Darrow"
-    BUNDLE_ID                 "com.peterdarrow.trackplayer"
+    BUNDLE_ID                 "com.peterdarrow.simpleaudioplayer"
     PLUGIN_MANUFACTURER_CODE  Pdar
-    PLUGIN_CODE               Trkp
-    PRODUCT_NAME              "Track Player"
+    PLUGIN_CODE               Sapl
+    PRODUCT_NAME              "Simple Audio Player"
     FORMATS                   AU Standalone
     IS_SYNTH                  TRUE
     NEEDS_MIDI_INPUT          TRUE
     NEEDS_MIDI_OUTPUT         FALSE
     IS_MIDI_EFFECT            FALSE
     EDITOR_WANTS_KEYBOARD_FOCUS FALSE
-    COPY_PLUGIN_AFTER_BUILD   ${TRACK_PLAYER_COPY_PLUGIN_AFTER_BUILD}
+    COPY_PLUGIN_AFTER_BUILD   ${SIMPLE_AUDIO_PLAYER_COPY_PLUGIN_AFTER_BUILD}
 )
 
-set(TRACK_PLAYER_SOURCES
+set(SIMPLE_AUDIO_PLAYER_SOURCES
     Source/PluginProcessor.cpp
     Source/PluginProcessor.h
     Source/PluginEditor.cpp
@@ -67,20 +67,20 @@ set(TRACK_PLAYER_SOURCES
     Source/PlayPauseButton.h
     Source/PlaylistComponents.cpp
     Source/PlaylistComponents.h
-    Source/TrackPlayerTheme.cpp
-    Source/TrackPlayerTheme.h
+    Source/SimpleAudioPlayerTheme.cpp
+    Source/SimpleAudioPlayerTheme.h
 )
 
-target_sources(TrackPlayer PRIVATE ${TRACK_PLAYER_SOURCES})
+target_sources(SimpleAudioPlayer PRIVATE ${SIMPLE_AUDIO_PLAYER_SOURCES})
 
-target_compile_definitions(TrackPlayer PUBLIC
+target_compile_definitions(SimpleAudioPlayer PUBLIC
     JUCE_WEB_BROWSER=0
     JUCE_USE_CURL=0
     JUCE_VST3_CAN_REPLACE_VST2=0
     JUCE_REPORT_APP_USAGE=0
 )
 
-target_link_libraries(TrackPlayer
+target_link_libraries(SimpleAudioPlayer
     PRIVATE
         juce::juce_audio_utils
         juce::juce_audio_processors
@@ -112,14 +112,14 @@ find_program(CLANG_TIDY_EXE
 
 if(CLANG_FORMAT_EXE)
     add_custom_target(format
-        COMMAND ${CLANG_FORMAT_EXE} -i ${TRACK_PLAYER_SOURCES}
+        COMMAND ${CLANG_FORMAT_EXE} -i ${SIMPLE_AUDIO_PLAYER_SOURCES}
         WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
         COMMENT "clang-format: reformatting sources in place"
         VERBATIM
     )
 
     add_custom_target(format-check
-        COMMAND ${CLANG_FORMAT_EXE} --dry-run -Werror ${TRACK_PLAYER_SOURCES}
+        COMMAND ${CLANG_FORMAT_EXE} --dry-run -Werror ${SIMPLE_AUDIO_PLAYER_SOURCES}
         WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
         COMMENT "clang-format: verifying sources are formatted"
         VERBATIM
@@ -137,13 +137,13 @@ if(CLANG_TIDY_EXE)
     if(APPLE)
         execute_process(
             COMMAND xcrun --show-sdk-path
-            OUTPUT_VARIABLE TRACK_PLAYER_MACOS_SDK
+            OUTPUT_VARIABLE SIMPLE_AUDIO_PLAYER_MACOS_SDK
             OUTPUT_STRIP_TRAILING_WHITESPACE
         )
-        if(TRACK_PLAYER_MACOS_SDK)
+        if(SIMPLE_AUDIO_PLAYER_MACOS_SDK)
             list(APPEND CLANG_TIDY_EXTRA_ARGS
                 --extra-arg=-isysroot
-                --extra-arg=${TRACK_PLAYER_MACOS_SDK}
+                --extra-arg=${SIMPLE_AUDIO_PLAYER_MACOS_SDK}
             )
         endif()
     endif()
@@ -155,7 +155,7 @@ if(CLANG_TIDY_EXE)
             # exclude _deps/ so those traces don't fail the run.
             --exclude-header-filter=.*/_deps/.*
             ${CLANG_TIDY_EXTRA_ARGS}
-            ${TRACK_PLAYER_SOURCES}
+            ${SIMPLE_AUDIO_PLAYER_SOURCES}
         WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
         COMMENT "clang-tidy: analysing sources"
         VERBATIM

@@ -1,8 +1,11 @@
-# Track Player
+# Simple Audio Player
 
 An Audio Unit instrument plugin for macOS that plays a playlist of supported
 audio files, with a standalone app target for development. Built with
 [JUCE](https://juce.com/) 8 and CMake.
+
+Inspired by [Simple Audio Player Swift](https://github.com/pmdarrow/simple-audio-player-swift),
+but written as an AU instrument plugin with C++ & JUCE.
 
 Features:
 
@@ -32,15 +35,15 @@ Optional, for dev tooling:
 Run the installer directly from the repository:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/pmdarrow/track-player/main/scripts/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/pmdarrow/simple-audio-player/main/scripts/install.sh | bash
 ```
 
 The installer downloads the latest macOS release zip from
-[GitHub Releases](https://github.com/pmdarrow/track-player/releases), extracts
-`Track Player.component`, and copies it into the system-wide Audio Unit folder:
+[GitHub Releases](https://github.com/pmdarrow/simple-audio-player/releases), extracts
+`Simple Audio Player.component`, and copies it into the system-wide Audio Unit folder:
 
 ```
-/Library/Audio/Plug-Ins/Components/Track Player.component
+/Library/Audio/Plug-Ins/Components/Simple Audio Player.component
 ```
 
 Because this is a system-wide install, macOS will ask for an administrator
@@ -66,8 +69,8 @@ The first configure step clones JUCE 8.0.12 into `build/_deps/` via
 On success two artefacts are produced:
 
 ```
-build/TrackPlayer_artefacts/AU/Track Player.component   # the AU plugin
-build/TrackPlayer_artefacts/Standalone/Track Player.app # dev-only standalone app
+build/SimpleAudioPlayer_artefacts/AU/Simple Audio Player.component   # the AU plugin
+build/SimpleAudioPlayer_artefacts/Standalone/Simple Audio Player.app # dev-only standalone app
 ```
 
 The standalone app is handy for iterating on the UI without having to open a
@@ -86,7 +89,7 @@ Because `COPY_PLUGIN_AFTER_BUILD` is enabled in [CMakeLists.txt](CMakeLists.txt)
 the bundle is also copied into the user plugin folder:
 
 ```
-~/Library/Audio/Plug-Ins/Components/Track Player.component
+~/Library/Audio/Plug-Ins/Components/Simple Audio Player.component
 ```
 
 ### Validating the plugin (optional)
@@ -96,10 +99,10 @@ re-build) you may want to:
 
 ```bash
 killall -9 AudioComponentRegistrar || true
-auval -v aumu Trkp Pdar
+auval -v aumu Sapl Pdar
 ```
 
-`aumu` is the AU type for music devices / instruments. `Trkp` is this plugin's
+`aumu` is the AU type for music devices / instruments. `Sapl` is this plugin's
 four-character code and `Pdar` is the manufacturer code — both defined in
 [CMakeLists.txt](CMakeLists.txt).
 
@@ -107,7 +110,7 @@ four-character code and `Pdar` is the manufacturer code — both defined in
 
 1. Launch an AU-compatible host (Logic Pro, GarageBand, Ableton Live 11+,
    Reaper, AUM, …).
-2. Create a new instrument track and choose **Peter Darrow → Track Player**.
+2. Create a new instrument track and choose **Peter Darrow → Simple Audio Player**.
 3. Click **Add** to pick one or more supported audio files (from anywhere on
    disk) and drop them into the playlist. **Remove** deletes the selected track.
 4. Single-click a row to select it. Double-click a row (or use the round play
@@ -152,9 +155,9 @@ Run any of them with `cmake --build build --target <name>`.
 ### Creating a GitHub release
 
 The release helper builds a universal AU, packages the component with
-`install.sh`, creates `dist/track-player-<version>-macos.zip`, and uploads it
+`install.sh`, creates `dist/simple-audio-player-<version>-macos.zip`, and uploads it
 to a GitHub release tagged `v<version>`. Before releasing, bump the version in
-`project(TrackPlayer VERSION ...)` in `CMakeLists.txt` and commit that change.
+`project(SimpleAudioPlayer VERSION ...)` in `CMakeLists.txt` and commit that change.
 The release script reads that CMake version automatically:
 
 ```bash

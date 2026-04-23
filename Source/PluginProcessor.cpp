@@ -2,7 +2,7 @@
 
 #include "PluginEditor.h"
 
-TrackPlayerProcessor::TrackPlayerProcessor()
+SimpleAudioPlayerProcessor::SimpleAudioPlayerProcessor()
     : AudioProcessor(
           BusesProperties().withOutput("Output", juce::AudioChannelSet::stereo(), true)
       ) {
@@ -13,7 +13,7 @@ TrackPlayerProcessor::TrackPlayerProcessor()
   readAheadThread.startThread();
 }
 
-TrackPlayerProcessor::~TrackPlayerProcessor() {
+SimpleAudioPlayerProcessor::~SimpleAudioPlayerProcessor() {
   // Must tear down in source-first order: detach the source from the transport
   // (which also releases its internal BufferingAudioSource pulling on our
   // reader) before we stop the read-ahead thread, otherwise the thread could
@@ -22,7 +22,7 @@ TrackPlayerProcessor::~TrackPlayerProcessor() {
   readAheadThread.stopThread(2000);
 }
 
-void TrackPlayerProcessor::prepareToPlay(double sampleRate, int samplesPerBlock) {
+void SimpleAudioPlayerProcessor::prepareToPlay(double sampleRate, int samplesPerBlock) {
   transport.prepareToPlay(samplesPerBlock, sampleRate);
   // Pre-allocate a stereo scratch sized to the host's block size. We always
   // render the transport into this fixed 2-channel layout and then copy/mix
@@ -32,17 +32,17 @@ void TrackPlayerProcessor::prepareToPlay(double sampleRate, int samplesPerBlock)
   isPrepared = true;
 }
 
-void TrackPlayerProcessor::releaseResources() {
+void SimpleAudioPlayerProcessor::releaseResources() {
   transport.releaseResources();
   isPrepared = false;
 }
 
-bool TrackPlayerProcessor::isBusesLayoutSupported(const BusesLayout& layouts) const {
+bool SimpleAudioPlayerProcessor::isBusesLayoutSupported(const BusesLayout& layouts) const {
   const auto& out = layouts.getMainOutputChannelSet();
   return out == juce::AudioChannelSet::mono() || out == juce::AudioChannelSet::stereo();
 }
 
-void TrackPlayerProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer&) {
+void SimpleAudioPlayerProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer&) {
   const juce::ScopedNoDenormals noDenormals;
   buffer.clear();
 
@@ -70,23 +70,23 @@ void TrackPlayerProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::
   }
 }
 
-juce::AudioProcessorEditor* TrackPlayerProcessor::createEditor() {
-  return new TrackPlayerEditor(*this);
+juce::AudioProcessorEditor* SimpleAudioPlayerProcessor::createEditor() {
+  return new SimpleAudioPlayerEditor(*this);
 }
 
 // ── Playlist / transport ─────────────────────────────────────────────────────
 
-juce::String TrackPlayerProcessor::getTrackDisplayName(int index) const {
+juce::String SimpleAudioPlayerProcessor::getTrackDisplayName(int index) const {
   if (index < 0 || index >= static_cast<int>(playlist.size())) return {};
   return playlist[static_cast<size_t>(index)].displayName;
 }
 
-juce::String TrackPlayerProcessor::getSupportedAudioFileWildcard() const {
+juce::String SimpleAudioPlayerProcessor::getSupportedAudioFileWildcard() const {
   const auto wildcard = formatManager.getWildcardForAllFormats();
   return wildcard.isNotEmpty() ? wildcard : "*.wav";
 }
 
-bool TrackPlayerProcessor::addTrack(const juce::File& file) {
+bool SimpleAudioPlayerProcessor::addTrack(const juce::File& file) {
   if (!canOpenAudioFile(file)) return false;
 
   Track track;
@@ -102,7 +102,7 @@ bool TrackPlayerProcessor::addTrack(const juce::File& file) {
   return true;
 }
 
-void TrackPlayerProcessor::removeTrack(int index) {
+void SimpleAudioPlayerProcessor::removeTrack(int index) {
   if (index < 0 || index >= static_cast<int>(playlist.size())) return;
 
   const bool wasCurrent = (index == currentIndex);
@@ -123,7 +123,7 @@ void TrackPlayerProcessor::removeTrack(int index) {
   }
 }
 
-void TrackPlayerProcessor::reorderTrack(int fromIndex, int toIndex) {
+void SimpleAudioPlayerProcessor::reorderTrack(int fromIndex, int toIndex) {
   const int size = static_cast<int>(playlist.size());
   if (fromIndex < 0 || fromIndex >= size) return;
   if (toIndex < 0 || toIndex > size) return;
@@ -151,7 +151,7 @@ void TrackPlayerProcessor::reorderTrack(int fromIndex, int toIndex) {
   }
 }
 
-void TrackPlayerProcessor::selectTrack(int index, bool andPlay) {
+void SimpleAudioPlayerProcessor::selectTrack(int index, bool andPlay) {
   if (index < 0 || index >= static_cast<int>(playlist.size())) return;
 
   if (index != currentIndex) {
@@ -162,7 +162,7 @@ void TrackPlayerProcessor::selectTrack(int index, bool andPlay) {
   if (andPlay && !transport.isPlaying()) transport.start();
 }
 
-void TrackPlayerProcessor::playPause() {
+void SimpleAudioPlayerProcessor::playPause() {
   if (currentIndex < 0) return;
 
   if (transport.isPlaying()) {
@@ -175,13 +175,13 @@ void TrackPlayerProcessor::playPause() {
   }
 }
 
-void TrackPlayerProcessor::seekSeconds(double seconds) {
+void SimpleAudioPlayerProcessor::seekSeconds(double seconds) {
   const double length = transport.getLengthInSeconds();
   if (length <= 0.0) return;
   transport.setPosition(juce::jlimit(0.0, length, seconds));
 }
 
-void TrackPlayerProcessor::loadIntoTransport(int index, bool andPlay) {
+void SimpleAudioPlayerProcessor::loadIntoTransport(int index, bool andPlay) {
   unloadTransport();
 
   if (index < 0 || index >= static_cast<int>(playlist.size())) return;
@@ -210,7 +210,7 @@ void TrackPlayerProcessor::loadIntoTransport(int index, bool andPlay) {
   if (andPlay) transport.start();
 }
 
-void TrackPlayerProcessor::unloadTransport() {
+void SimpleAudioPlayerProcessor::unloadTransport() {
   transport.stop();
   // Clear the transport's source before resetting our owned pointer — setSource
   // tears down the BufferingAudioSource wrapping readerSource, guaranteeing no
@@ -220,7 +220,7 @@ void TrackPlayerProcessor::unloadTransport() {
   currentIndex = -1;
 }
 
-bool TrackPlayerProcessor::canOpenAudioFile(const juce::File& file) {
+bool SimpleAudioPlayerProcessor::canOpenAudioFile(const juce::File& file) {
   if (!file.existsAsFile()) return false;
 
   std::unique_ptr<juce::AudioFormatReader> reader(formatManager.createReaderFor(file));
@@ -231,8 +231,8 @@ bool TrackPlayerProcessor::canOpenAudioFile(const juce::File& file) {
 
 // ── Persistence ──────────────────────────────────────────────────────────────
 
-void TrackPlayerProcessor::getStateInformation(juce::MemoryBlock& destData) {
-  juce::ValueTree state("TrackPlayerState");
+void SimpleAudioPlayerProcessor::getStateInformation(juce::MemoryBlock& destData) {
+  juce::ValueTree state("SimpleAudioPlayerState");
   state.setProperty("currentIndex", currentIndex, nullptr);
   state.setProperty("editorWidth", getEditorWidth(), nullptr);
   state.setProperty("editorHeight", getEditorHeight(), nullptr);
@@ -249,10 +249,10 @@ void TrackPlayerProcessor::getStateInformation(juce::MemoryBlock& destData) {
   state.writeToStream(out);
 }
 
-void TrackPlayerProcessor::setStateInformation(const void* data, int sizeInBytes) {
+void SimpleAudioPlayerProcessor::setStateInformation(const void* data, int sizeInBytes) {
   if (sizeInBytes <= 0) return;
   auto state = juce::ValueTree::readFromData(data, static_cast<size_t>(sizeInBytes));
-  if (!state.isValid() || !state.hasType("TrackPlayerState")) return;
+  if (!state.isValid() || !state.hasType("SimpleAudioPlayerState")) return;
 
   setEditorSize(
       state.getProperty("editorWidth", getEditorWidth()),
@@ -283,4 +283,6 @@ void TrackPlayerProcessor::setStateInformation(const void* data, int sizeInBytes
 
 // Required factory function the JUCE plugin wrapper calls to instantiate the
 // processor — one per plugin instance loaded by the host.
-juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter() { return new TrackPlayerProcessor(); }
+juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter() {
+  return new SimpleAudioPlayerProcessor();
+}

@@ -5,7 +5,7 @@ usage() {
   cat <<'USAGE'
 Usage: bash scripts/create-github-release.sh [--draft] [--prerelease] [--dry-run]
 
-Builds the AU, packages Track Player.component with install.sh, then creates a
+Builds the AU, packages Simple Audio Player.component with install.sh, then creates a
 GitHub release and uploads the zip with gh. The release tag is derived from
 project(... VERSION ...) in CMakeLists.txt.
 
@@ -15,8 +15,8 @@ Examples:
   bash scripts/create-github-release.sh --dry-run
 
 Environment overrides:
-  TRACK_PLAYER_RELEASE_BUILD_DIR   Build dir. Default: build-release
-  TRACK_PLAYER_RELEASE_ARCHS       CMAKE_OSX_ARCHITECTURES. Default: x86_64;arm64
+  SIMPLE_AUDIO_PLAYER_RELEASE_BUILD_DIR   Build dir. Default: build-release
+  SIMPLE_AUDIO_PLAYER_RELEASE_ARCHS       CMAKE_OSX_ARCHITECTURES. Default: x86_64;arm64
   CMAKE_GENERATOR                  CMake generator. Default: Ninja
 USAGE
 }
@@ -75,8 +75,8 @@ if [[ "${dry_run}" -eq 0 ]]; then
     die "local ${branch} does not match ${upstream}; push or pull before releasing."
 fi
 
-build_dir="${TRACK_PLAYER_RELEASE_BUILD_DIR:-build-release}"
-archs="${TRACK_PLAYER_RELEASE_ARCHS:-x86_64;arm64}"
+build_dir="${SIMPLE_AUDIO_PLAYER_RELEASE_BUILD_DIR:-build-release}"
+archs="${SIMPLE_AUDIO_PLAYER_RELEASE_ARCHS:-x86_64;arm64}"
 generator="${CMAKE_GENERATOR:-Ninja}"
 
 if [[ "${build_dir}" = /* ]]; then
@@ -87,18 +87,18 @@ fi
 
 cmake -S "${repo_root}" -B "${build_dir}" -G "${generator}" \
   -DCMAKE_BUILD_TYPE=Release \
-  -DTRACK_PLAYER_COPY_PLUGIN_AFTER_BUILD=FALSE \
+  -DSIMPLE_AUDIO_PLAYER_COPY_PLUGIN_AFTER_BUILD=FALSE \
   "-DCMAKE_OSX_ARCHITECTURES=${archs}"
 
 version="$(awk -F= '$1 == "CMAKE_PROJECT_VERSION:STATIC" { print $2; exit }' "${build_dir_abs}/CMakeCache.txt")"
 [[ -n "${version}" ]] || die "could not read CMAKE_PROJECT_VERSION from ${build_dir_abs}/CMakeCache.txt"
 
 tag="v${version}"
-package_name="track-player-${version}-macos"
+package_name="simple-audio-player-${version}-macos"
 dist_dir="${repo_root}/dist"
 stage_dir="${dist_dir}/${package_name}"
 zip_path="${dist_dir}/${package_name}.zip"
-component_stage="${stage_dir}/Track Player.component"
+component_stage="${stage_dir}/Simple Audio Player.component"
 
 if [[ "${dry_run}" -eq 0 ]]; then
   existing_tag_commit="$(git rev-parse -q --verify "refs/tags/${tag}^{commit}" 2>/dev/null || true)"
@@ -108,13 +108,13 @@ if [[ "${dry_run}" -eq 0 ]]; then
   fi
 fi
 
-echo "Using Track Player ${version} (${tag})"
+echo "Using Simple Audio Player ${version} (${tag})"
 
-cmake --build "${build_dir}" --target TrackPlayer_AU --config Release
+cmake --build "${build_dir}" --target SimpleAudioPlayer_AU --config Release
 
 component_candidates=(
-  "${build_dir_abs}/TrackPlayer_artefacts/Release/AU/Track Player.component"
-  "${build_dir_abs}/TrackPlayer_artefacts/AU/Track Player.component"
+  "${build_dir_abs}/SimpleAudioPlayer_artefacts/Release/AU/Simple Audio Player.component"
+  "${build_dir_abs}/SimpleAudioPlayer_artefacts/AU/Simple Audio Player.component"
 )
 
 component_src=""
@@ -157,14 +157,14 @@ fi
 release_notes="macOS release.
 
 Install:
-curl -fsSL https://raw.githubusercontent.com/pmdarrow/track-player/main/scripts/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/pmdarrow/simple-audio-player/main/scripts/install.sh | bash
 
 Restart your DAW or rescan Audio Units after installing.
 
 This build is intended for trusted manual installation and is not notarized."
 
-gh release create "${tag}" "${zip_path}#Track Player macOS installer" \
+gh release create "${tag}" "${zip_path}#Simple Audio Player macOS installer" \
   --target "${branch}" \
-  --title "Track Player ${tag}" \
+  --title "Simple Audio Player ${tag}" \
   --notes "${release_notes}" \
   "${gh_flags[@]}"

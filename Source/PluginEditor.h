@@ -16,13 +16,13 @@
 // Inherits DragAndDropContainer so the playlist rows can start drags — JUCE
 // walks up the component tree from the drag source to find the nearest
 // container.
-class TrackPlayerEditor final : public juce::AudioProcessorEditor,
-                                public juce::ListBoxModel,
-                                public juce::DragAndDropContainer,
-                                private juce::Timer {
+class SimpleAudioPlayerEditor final : public juce::AudioProcessorEditor,
+                                      public juce::ListBoxModel,
+                                      public juce::DragAndDropContainer,
+                                      private juce::Timer {
  public:
-  explicit TrackPlayerEditor(TrackPlayerProcessor&);
-  ~TrackPlayerEditor() override;
+  explicit SimpleAudioPlayerEditor(SimpleAudioPlayerProcessor&);
+  ~SimpleAudioPlayerEditor() override;
 
   void paint(juce::Graphics&) override;
   void resized() override;
@@ -48,7 +48,7 @@ class TrackPlayerEditor final : public juce::AudioProcessorEditor,
 
   // Named to avoid shadowing AudioProcessorEditor::processor (the base class's
   // AudioProcessor& member of the same name). Same object, typed reference.
-  TrackPlayerProcessor& player;
+  SimpleAudioPlayerProcessor& player;
 
   PlaylistListBox playlistBox;
   juce::TextButton addButton{"Add"};
@@ -73,5 +73,5 @@ class TrackPlayerEditor final : public juce::AudioProcessorEditor,
   int lastCurrentIndex{-1};
   bool lastIsPlaying{false};
 
-  JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(TrackPlayerEditor)
+  JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(SimpleAudioPlayerEditor)
 };

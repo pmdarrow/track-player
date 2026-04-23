@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-PLUGIN_NAME="Track Player.component"
+PLUGIN_NAME="Simple Audio Player.component"
 INSTALL_DIR="/Library/Audio/Plug-Ins/Components"
-REPO_SLUG="pmdarrow/track-player"
-ASSET_NAME_PATTERN="track-player-[0-9A-Za-z._-]+-macos\\.zip"
+REPO_SLUG="pmdarrow/simple-audio-player"
+ASSET_NAME_PATTERN="simple-audio-player-[0-9A-Za-z._-]+-macos\\.zip"
 GITHUB_API_URL="https://api.github.com/repos/${REPO_SLUG}/releases/latest"
 
 target_component="${INSTALL_DIR}/${PLUGIN_NAME}"
@@ -41,11 +41,11 @@ download_latest_component() {
   command -v curl >/dev/null 2>&1 || die "curl is required to download the release."
   command -v ditto >/dev/null 2>&1 || die "ditto is required to extract the release zip."
 
-  tmp_dir="$(mktemp -d "${TMPDIR:-/tmp}/track-player-install.XXXXXX")"
-  local zip_path="${tmp_dir}/track-player-macos.zip"
+  tmp_dir="$(mktemp -d "${TMPDIR:-/tmp}/simple-audio-player-install.XXXXXX")"
+  local zip_path="${tmp_dir}/simple-audio-player-macos.zip"
   local extract_dir="${tmp_dir}/release"
 
-  echo "Finding the latest Track Player release..." >&2
+  echo "Finding the latest Simple Audio Player release..." >&2
 
   local asset_urls
   asset_urls="$(curl -fsSL "${GITHUB_API_URL}" | grep -Eo "https://[^\"]+/${ASSET_NAME_PATTERN}" || true)"

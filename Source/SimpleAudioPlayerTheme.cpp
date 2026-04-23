@@ -1,6 +1,6 @@
-#include "TrackPlayerTheme.h"
+#include "SimpleAudioPlayerTheme.h"
 
-namespace track_player_ui {
+namespace simple_audio_player_ui {
 
 const juce::Colour kPlaylistBackground{0xff1b1d22};
 const juce::Colour kControlsBackground{0xff2b2d33};
@@ -130,4 +130,4 @@ void styleTransportButton(juce::Button& button) {
   button.setColour(juce::ComboBox::outlineColourId, kButtonOutline);
 }
 
-}  // namespace track_player_ui
+}  // namespace simple_audio_player_ui
