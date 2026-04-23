@@ -154,11 +154,11 @@ Run any of them with `cmake --build build --target <name>`.
 
 ### Creating a GitHub release
 
-The release helper builds a universal AU, packages the component with
-`install.sh`, creates `dist/simple-audio-player-<version>-macos.zip`, and uploads it
-to a GitHub release tagged `v<version>`. Before releasing, bump the version in
-`project(SimpleAudioPlayer VERSION ...)` in `CMakeLists.txt` and commit that change.
-The release script reads that CMake version automatically:
+The release helper builds a universal AU, packages the component as
+`dist/simple-audio-player-<version>-macos.zip`, and uploads it to a GitHub
+release tagged `v<version>`. Before releasing, bump the version in
+`project(SimpleAudioPlayer VERSION ...)` in `CMakeLists.txt` and commit that
+change. The release script reads that CMake version automatically:
 
 ```bash
 bash scripts/create-github-release.sh

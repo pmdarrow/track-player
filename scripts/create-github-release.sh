@@ -5,8 +5,8 @@ usage() {
   cat <<'USAGE'
 Usage: bash scripts/create-github-release.sh [--draft] [--prerelease] [--dry-run]
 
-Builds the AU, packages Simple Audio Player.component with install.sh, then creates a
-GitHub release and uploads the zip with gh. The release tag is derived from
+Builds the AU, packages Simple Audio Player.component, then creates a GitHub
+release and uploads the zip with gh. The release tag is derived from
 project(... VERSION ...) in CMakeLists.txt.
 
 Examples:
@@ -135,8 +135,6 @@ rm -rf "${stage_dir}" "${zip_path}"
 mkdir -p "${stage_dir}"
 
 ditto --noqtn "${component_src}" "${component_stage}"
-cp "${repo_root}/scripts/install.sh" "${stage_dir}/install.sh"
-chmod 755 "${stage_dir}/install.sh"
 xattr -dr com.apple.quarantine "${stage_dir}" 2>/dev/null || true
 
 codesign --force --deep --timestamp=none --sign - "${component_stage}"
@@ -157,13 +155,15 @@ fi
 release_notes="macOS release.
 
 Install:
+\`\`\`
 curl -fsSL https://raw.githubusercontent.com/pmdarrow/simple-audio-player/main/scripts/install.sh | bash
+\`\`\`
 
 Restart your DAW or rescan Audio Units after installing.
 
 This build is intended for trusted manual installation and is not notarized."
 
-gh release create "${tag}" "${zip_path}#Simple Audio Player macOS installer" \
+gh release create "${tag}" "${zip_path}#Simple Audio Player macOS plugin" \
   --target "${branch}" \
   --title "Simple Audio Player ${tag}" \
   --notes "${release_notes}" \
