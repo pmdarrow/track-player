@@ -31,6 +31,24 @@ const juce::Colour kTimeText{0xffd7d9de};
 const juce::Colour kProgressTrack{0xff45484f};
 const juce::Colour kProgressThumb{0xff9da0a6};
 
+constexpr int kEditorPadding = 12;
+constexpr int kControlsBarH = 56;
+constexpr int kControlsRowH = 36;
+constexpr int kControlsTopGap = kControlsBarH - kEditorPadding - kControlsRowH;
+
+class TransportSliderLookAndFeel final : public juce::LookAndFeel_V4 {
+ public:
+  int getSliderThumbRadius(juce::Slider& slider) override {
+    const int available = slider.isHorizontal() ? slider.getHeight() : slider.getWidth();
+    return juce::jmin(20, static_cast<int>(static_cast<float>(available) * 0.55f));
+  }
+};
+
+TransportSliderLookAndFeel& transportSliderLookAndFeel() {
+  static TransportSliderLookAndFeel lookAndFeel;
+  return lookAndFeel;
+}
+
 void styleTransportButton(juce::Button& button) {
   button.setColour(juce::TextButton::buttonColourId, kButtonFill);
   button.setColour(juce::TextButton::buttonOnColourId, kButtonFill.brighter(0.06f));
@@ -274,6 +292,7 @@ TrackPlayerEditor::TrackPlayerEditor(TrackPlayerProcessor& p)
   progressSlider.setColour(juce::Slider::trackColourId, kAccentBlue);
   progressSlider.setColour(juce::Slider::backgroundColourId, kProgressTrack);
   progressSlider.setColour(juce::Slider::thumbColourId, kProgressThumb);
+  progressSlider.setLookAndFeel(&transportSliderLookAndFeel());
   // Normalised [0,1] — the slider is track-agnostic; we multiply by the
   // current track length on seek.
   progressSlider.setRange(0.0, 1.0);
@@ -309,41 +328,49 @@ TrackPlayerEditor::TrackPlayerEditor(TrackPlayerProcessor& p)
   startTimerHz(15);
 }
 
-TrackPlayerEditor::~TrackPlayerEditor() { stopTimer(); }
+TrackPlayerEditor::~TrackPlayerEditor() {
+  progressSlider.setLookAndFeel(nullptr);
+  stopTimer();
+}
 
 void TrackPlayerEditor::paint(juce::Graphics& g) {
   g.fillAll(kPlaylistBackground);
 
   auto controlsBand = getLocalBounds();
-  controlsBand.removeFromTop(juce::jmax(0, getHeight() - 66));
+  controlsBand.removeFromTop(juce::jmax(0, getHeight() - kControlsBarH));
   g.setColour(kControlsBackground);
   g.fillRect(controlsBand);
 }
 
 void TrackPlayerEditor::resized() {
-  auto bounds = getLocalBounds().reduced(12);
+  auto bounds = getLocalBounds().reduced(kEditorPadding);
 
   // Bottom transport row, left→right: play, elapsed, slider, total, Add, Remove.
-  auto controls = bounds.removeFromBottom(44);
-  bounds.removeFromBottom(10);
+  auto controls = bounds.removeFromBottom(kControlsRowH);
+  bounds.removeFromBottom(kControlsTopGap);
   playlistBox.setBounds(bounds);
 
-  constexpr int kAddBtnW = 72;
-  constexpr int kRemoveBtnW = 88;
+  constexpr int kButtonH = 34;
+  constexpr int kAddBtnW = 56;
+  constexpr int kRemoveBtnW = 72;
   constexpr int kTimeLabelW = 50;
   constexpr int kGap = 6;
   // Play button is square so its inscribed circle fills the whole frame —
   // no horizontal dead-space around a round button.
-  const int playBtnW = controls.getHeight();
+  constexpr int kPlayBtnW = kButtonH;
 
-  playButton.setBounds(controls.removeFromLeft(playBtnW));
+  playButton.setBounds(
+      controls.removeFromLeft(kPlayBtnW).withSizeKeepingCentre(kPlayBtnW, kButtonH)
+  );
   controls.removeFromLeft(kGap + 4);
 
   // Pull Add/Remove off the right edge before the slider so the slider gets
   // whatever horizontal space is left over.
-  removeButton.setBounds(controls.removeFromRight(kRemoveBtnW));
+  removeButton.setBounds(
+      controls.removeFromRight(kRemoveBtnW).withSizeKeepingCentre(kRemoveBtnW, kButtonH)
+  );
   controls.removeFromRight(kGap);
-  addButton.setBounds(controls.removeFromRight(kAddBtnW));
+  addButton.setBounds(controls.removeFromRight(kAddBtnW).withSizeKeepingCentre(kAddBtnW, kButtonH));
   controls.removeFromRight(kGap * 2);
 
   elapsedLabel.setBounds(controls.removeFromLeft(kTimeLabelW));
