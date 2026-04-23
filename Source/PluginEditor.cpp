@@ -32,9 +32,13 @@ const juce::Colour kProgressTrack{0xff45484f};
 const juce::Colour kProgressThumb{0xff9da0a6};
 
 constexpr int kEditorPadding = 12;
+constexpr int kMinEditorW = 420;
+constexpr int kMinEditorH = 220;
+constexpr int kMaxEditorW = 1200;
+constexpr int kMaxEditorH = 800;
 constexpr int kControlsBarH = 56;
 constexpr int kControlsRowH = 36;
-constexpr int kControlsTopGap = kControlsBarH - kEditorPadding - kControlsRowH;
+constexpr int kControlsVerticalMargin = (kControlsBarH - kControlsRowH) / 2;
 
 class TransportSliderLookAndFeel final : public juce::LookAndFeel_V4 {
  public:
@@ -247,8 +251,12 @@ int PlaylistListBox::insertionIndexForPosition(int x, int y) const {
 
 TrackPlayerEditor::TrackPlayerEditor(TrackPlayerProcessor& p)
     : AudioProcessorEditor(&p), player(p) {
-  setSize(600, 400);
-  setResizable(false, false);
+  const int editorW = juce::jlimit(kMinEditorW, kMaxEditorW, player.getEditorWidth());
+  const int editorH = juce::jlimit(kMinEditorH, kMaxEditorH, player.getEditorHeight());
+
+  setSize(editorW, editorH);
+  setResizeLimits(kMinEditorW, kMinEditorH, kMaxEditorW, kMaxEditorH);
+  setResizable(true, true);
 
   playlistBox.setModel(this);
   playlistBox.setRowHeight(34);
@@ -343,11 +351,15 @@ void TrackPlayerEditor::paint(juce::Graphics& g) {
 }
 
 void TrackPlayerEditor::resized() {
+  player.setEditorSize(getWidth(), getHeight());
+
   auto bounds = getLocalBounds().reduced(kEditorPadding);
+  auto controlsBand = getLocalBounds();
+  controlsBand.removeFromTop(juce::jmax(0, getHeight() - kControlsBarH));
 
   // Bottom transport row, left→right: play, elapsed, slider, total, Add, Remove.
-  auto controls = bounds.removeFromBottom(kControlsRowH);
-  bounds.removeFromBottom(kControlsTopGap);
+  auto controls = controlsBand.reduced(kEditorPadding, kControlsVerticalMargin);
+  bounds.removeFromBottom(kControlsBarH - kEditorPadding);
   playlistBox.setBounds(bounds);
 
   constexpr int kButtonH = 34;

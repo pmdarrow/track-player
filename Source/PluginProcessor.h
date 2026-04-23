@@ -5,6 +5,7 @@
 #include <juce_audio_processors/juce_audio_processors.h>
 #include <juce_data_structures/juce_data_structures.h>
 
+#include <atomic>
 #include <memory>
 #include <vector>
 
@@ -46,6 +47,14 @@ class TrackPlayerProcessor final : public juce::AudioProcessor {
 
   void getStateInformation(juce::MemoryBlock& destData) override;
   void setStateInformation(const void* data, int sizeInBytes) override;
+
+  // ── Editor state API ─ message thread writes, host state may read ────────
+  int getEditorWidth() const noexcept { return editorWidth.load(); }
+  int getEditorHeight() const noexcept { return editorHeight.load(); }
+  void setEditorSize(int width, int height) noexcept {
+    editorWidth.store(juce::jmax(1, width));
+    editorHeight.store(juce::jmax(1, height));
+  }
 
   // ── Playlist / transport API ─ message thread only ──────────────────────
   int getNumTracks() const noexcept { return static_cast<int>(playlist.size()); }
@@ -97,6 +106,9 @@ class TrackPlayerProcessor final : public juce::AudioProcessor {
   // bus is. Sized in prepareToPlay so processBlock never allocates.
   juce::AudioBuffer<float> stereoScratch;
   bool isPrepared{false};
+
+  std::atomic<int> editorWidth{600};
+  std::atomic<int> editorHeight{400};
 
   JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(TrackPlayerProcessor)
 };

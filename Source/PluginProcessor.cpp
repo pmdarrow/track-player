@@ -218,6 +218,8 @@ void TrackPlayerProcessor::unloadTransport() {
 void TrackPlayerProcessor::getStateInformation(juce::MemoryBlock& destData) {
   juce::ValueTree state("TrackPlayerState");
   state.setProperty("currentIndex", currentIndex, nullptr);
+  state.setProperty("editorWidth", getEditorWidth(), nullptr);
+  state.setProperty("editorHeight", getEditorHeight(), nullptr);
 
   juce::ValueTree list("Playlist");
   for (const auto& track : playlist) {
@@ -235,6 +237,11 @@ void TrackPlayerProcessor::setStateInformation(const void* data, int sizeInBytes
   if (sizeInBytes <= 0) return;
   auto state = juce::ValueTree::readFromData(data, static_cast<size_t>(sizeInBytes));
   if (!state.isValid() || !state.hasType("TrackPlayerState")) return;
+
+  setEditorSize(
+      state.getProperty("editorWidth", getEditorWidth()),
+      state.getProperty("editorHeight", getEditorHeight())
+  );
 
   unloadTransport();
   playlist.clear();
