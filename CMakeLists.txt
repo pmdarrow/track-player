@@ -58,6 +58,12 @@ set(TRACK_PLAYER_SOURCES
     Source/PluginProcessor.h
     Source/PluginEditor.cpp
     Source/PluginEditor.h
+    Source/PlayPauseButton.cpp
+    Source/PlayPauseButton.h
+    Source/PlaylistComponents.cpp
+    Source/PlaylistComponents.h
+    Source/TrackPlayerTheme.cpp
+    Source/TrackPlayerTheme.h
 )
 
 target_sources(TrackPlayer PRIVATE ${TRACK_PLAYER_SOURCES})

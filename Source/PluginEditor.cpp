@@ -1,5 +1,11 @@
 #include "PluginEditor.h"
 
+#include <cmath>
+
+#include "TrackPlayerTheme.h"
+
+namespace ui = track_player_ui;
+
 namespace {
 // Guards against negatives and NaN/inf — transport length/position can in
 // principle return a junk value before a track is loaded.
@@ -9,356 +15,28 @@ juce::String formatSeconds(double seconds) {
   const int total = static_cast<int>(std::floor(seconds));
   return juce::String::formatted("%d:%02d", total / 60, total % 60);
 }
-
-// Tag prefix for our drag-and-drop source descriptions. A prefix (rather than
-// bare integer rows) distinguishes playlist-row drags from anything else that
-// might end up as a drag source in the same DragAndDropContainer.
-constexpr const char* kDragSourceTag = "playlist-row:";
-
-// Palette tuned toward the macOS dark-player reference: a near-black playlist,
-// a slightly raised transport band, saturated blue selection/progress, neutral
-// grey controls, and the system-ish green active-track indicator.
-const juce::Colour kPlaylistBackground{0xff1b1d22};
-const juce::Colour kControlsBackground{0xff2b2d33};
-const juce::Colour kAccentBlue{0xff0a5fd7};
-const juce::Colour kPlayingGreen{0xff32d74b};
-const juce::Colour kButtonFill{0xff575b63};
-const juce::Colour kButtonOutline{0xff6a6e76};
-const juce::Colour kButtonText{0xfff2f3f5};
-const juce::Colour kPrimaryText{0xfff4f6f8};
-const juce::Colour kSecondaryText{0xffd3d5da};
-const juce::Colour kTimeText{0xffd7d9de};
-const juce::Colour kProgressTrack{0xff45484f};
-const juce::Colour kProgressThumb{0xff9da0a6};
-
-constexpr int kEditorPadding = 12;
-constexpr int kMinEditorW = 420;
-constexpr int kMinEditorH = 220;
-constexpr int kMaxEditorW = 1200;
-constexpr int kMaxEditorH = 800;
-constexpr int kControlsBarH = 56;
-constexpr int kControlsRowH = 36;
-constexpr int kControlsVerticalMargin = (kControlsBarH - kControlsRowH) / 2;
-constexpr int kPlaylistTopInset = 0;
-constexpr int kPlaylistRightInset = 4;
-
-class TransportSliderLookAndFeel final : public juce::LookAndFeel_V4 {
- public:
-  int getSliderThumbRadius(juce::Slider& slider) override {
-    const int available = slider.isHorizontal() ? slider.getHeight() : slider.getWidth();
-    return juce::jmin(20, static_cast<int>(static_cast<float>(available) * 0.55f));
-  }
-};
-
-class EditorLookAndFeel final : public juce::LookAndFeel_V4 {
- public:
-  void drawCornerResizer(
-      juce::Graphics& g, int width, int height, bool isMouseOver, bool isMouseDragging
-  ) override {
-    auto handleColour = kButtonOutline.withAlpha(0.58f);
-    if (isMouseDragging)
-      handleColour = kButtonOutline.withAlpha(0.86f);
-    else if (isMouseOver)
-      handleColour = kButtonOutline.withAlpha(0.72f);
-
-    g.setColour(handleColour);
-
-    constexpr float kLineThickness = 1.5f;
-    for (int i = 0; i < 3; ++i) {
-      const float offset = 4.0f + (static_cast<float>(i) * 5.0f);
-      g.drawLine(
-          static_cast<float>(width) - offset,
-          static_cast<float>(height) - 1.5f,
-          static_cast<float>(width) - 1.5f,
-          static_cast<float>(height) - offset,
-          kLineThickness
-      );
-    }
-  }
-};
-
-// JUCE exposes scrollbar colours, but not the exact thumb width/placement we
-// need here. Override only this paint hook so the playlist can keep a narrow
-// right-aligned thumb with breathing room between rows and the scroll affordance.
-class PlaylistLookAndFeel final : public juce::LookAndFeel_V4 {
- public:
-  int getDefaultScrollbarWidth() override { return 16; }
-
-  void drawScrollbar(
-      juce::Graphics& g,
-      juce::ScrollBar& scrollbar,
-      int x,
-      int y,
-      int width,
-      int height,
-      bool isScrollbarVertical,
-      int thumbStartPosition,
-      int thumbSize,
-      bool isMouseOver,
-      bool isMouseDown
-  ) override {
-    if (thumbSize <= 0) return;
-
-    const auto bounds = juce::Rectangle<int>(x, y, width, height).toFloat();
-    const float availableThickness = isScrollbarVertical ? bounds.getWidth() : bounds.getHeight();
-    const float thickness = juce::jmin(8.0f, availableThickness);
-
-    auto thumbColour = kProgressThumb.withAlpha(0.72f);
-    if (isMouseDown)
-      thumbColour = kProgressThumb;
-    else if (isMouseOver || scrollbar.isMouseOver())
-      thumbColour = kProgressThumb.withAlpha(0.9f);
-
-    const float inset = juce::jmin(3.0f, static_cast<float>(thumbSize) * 0.25f);
-    const float paintedThumbSize = juce::jmax(2.0f, static_cast<float>(thumbSize) - (inset * 2.0f));
-    const auto thumbBounds = isScrollbarVertical
-                                 ? juce::Rectangle<float>(
-                                       bounds.getRight() - thickness,
-                                       static_cast<float>(thumbStartPosition) + inset,
-                                       thickness,
-                                       paintedThumbSize
-                                   )
-                                 : juce::Rectangle<float>(
-                                       static_cast<float>(thumbStartPosition) + inset,
-                                       bounds.getBottom() - thickness,
-                                       paintedThumbSize,
-                                       thickness
-                                   );
-
-    g.setColour(thumbColour);
-    g.fillRoundedRectangle(thumbBounds, thickness * 0.5f);
-  }
-};
-
-TransportSliderLookAndFeel& transportSliderLookAndFeel() {
-  static TransportSliderLookAndFeel lookAndFeel;
-  return lookAndFeel;
-}
-
-EditorLookAndFeel& editorLookAndFeel() {
-  static EditorLookAndFeel lookAndFeel;
-  return lookAndFeel;
-}
-
-PlaylistLookAndFeel& playlistLookAndFeel() {
-  static PlaylistLookAndFeel lookAndFeel;
-  return lookAndFeel;
-}
-
-void styleTransportButton(juce::Button& button) {
-  button.setColour(juce::TextButton::buttonColourId, kButtonFill);
-  button.setColour(juce::TextButton::buttonOnColourId, kButtonFill.brighter(0.06f));
-  button.setColour(juce::TextButton::textColourOffId, kButtonText);
-  button.setColour(juce::TextButton::textColourOnId, kButtonText);
-  button.setColour(juce::ComboBox::outlineColourId, kButtonOutline);
-}
 }  // namespace
-
-// ── PlayPauseButton ─────────────────────────────────────────────────────────
-
-void PlayPauseButton::paintButton(
-    juce::Graphics& g, bool shouldDrawButtonAsHighlighted, bool shouldDrawButtonAsDown
-) {
-  // Circular chrome that mirrors LookAndFeel_V4::drawButtonBackground: fill
-  // with buttonColourId, stroke with ComboBox::outlineColourId, and tint on
-  // hover/press via Colour::contrasting so the visual matches the adjacent
-  // Add / Remove rectangles exactly.
-  const auto area = getLocalBounds().toFloat();
-  const float diameter = juce::jmin(area.getWidth(), area.getHeight());
-  // Inset half a pixel so the 1 px stroke lands on pixel boundaries rather
-  // than being split across two rows / columns (which would look fuzzy).
-  const auto circle =
-      juce::Rectangle<float>(diameter - 1.0f, diameter - 1.0f).withCentre(area.getCentre());
-
-  auto fill =
-      findColour(juce::TextButton::buttonColourId).withMultipliedAlpha(isEnabled() ? 1.0f : 0.5f);
-  if (shouldDrawButtonAsDown)
-    fill = fill.contrasting(0.2f);
-  else if (shouldDrawButtonAsHighlighted)
-    fill = fill.contrasting(0.05f);
-
-  g.setColour(fill);
-  g.fillEllipse(circle);
-
-  g.setColour(findColour(juce::ComboBox::outlineColourId));
-  g.drawEllipse(circle, 1.0f);
-
-  // Glyph sized to ~40% of the circle's diameter — big enough to read as an
-  // icon at a glance, small enough to leave a comfortable ring of empty space
-  // inside the circle.
-  const float iconH = diameter * 0.4f;
-  const float iconW = iconH * 0.9f;
-
-  g.setColour(
-      findColour(juce::TextButton::textColourOffId).withMultipliedAlpha(isEnabled() ? 1.0f : 0.5f)
-  );
-
-  if (showingPause) {
-    // Pause is symmetric, so the bounding box's geometric centre IS the
-    // optical centre.
-    const auto iconArea = juce::Rectangle<float>(iconW, iconH).withCentre(area.getCentre());
-    const float barW = iconArea.getWidth() * 0.35f;
-    g.fillRect(iconArea.withWidth(barW));
-    g.fillRect(iconArea.withX(iconArea.getRight() - barW).withWidth(barW));
-  } else {
-    // Right-pointing triangle. The centroid sits at iconW/3 from the base
-    // (not the bbox centre), so a geometrically-centred bbox puts the
-    // triangle's visual mass left of centre. Shift the bbox right by iconW/6
-    // — the bbox-centre-to-centroid offset — so the centroid lands on the
-    // circle centre.
-    const auto iconArea = juce::Rectangle<float>(iconW, iconH)
-                              .withCentre({area.getCentreX() + (iconW / 6.0f), area.getCentreY()});
-    juce::Path triangle;
-    triangle.addTriangle(
-        iconArea.getTopLeft(),
-        iconArea.getBottomLeft(),
-        {iconArea.getRight(), iconArea.getCentreY()}
-    );
-    g.fillPath(triangle);
-  }
-}
-
-// ── PlaylistRowComponent ────────────────────────────────────────────────────
-
-void PlaylistRowComponent::mouseDrag(const juce::MouseEvent& e) {
-  if (rowNumber < 0) return;
-
-  auto* container = juce::DragAndDropContainer::findParentDragContainerFor(this);
-  if (container == nullptr || container->isDragAndDropActive()) return;
-
-  // Require a small threshold of movement before flipping into a drag — a
-  // mouse jitter during a click shouldn't trigger DnD and eat the normal
-  // select/double-click flow.
-  if (e.getDistanceFromDragStart() < 5) return;
-
-  const juce::String source = juce::String(kDragSourceTag) + juce::String(rowNumber);
-  container->startDragging(source, this);
-}
-
-void PlaylistRowComponent::paint(juce::Graphics& g) {
-  if (rowNumber < 0 || rowNumber >= processor.getNumTracks()) return;
-
-  const auto rowBackground = getLocalBounds().toFloat().reduced(0.0f, 1.0f);
-
-  if (isSelected) {
-    g.setColour(kAccentBlue);
-    g.fillRoundedRectangle(rowBackground, 7.0f);
-  } else if (hovered) {
-    // Subtle lighten-on-hover; distinct from the blue selection tint so the
-    // user can tell which row is focused vs. merely under the cursor.
-    g.setColour(juce::Colours::white.withAlpha(0.06f));
-    g.fillRoundedRectangle(rowBackground, 7.0f);
-  }
-
-  g.setColour(isSelected ? kPrimaryText : kSecondaryText);
-  g.setFont(juce::Font(juce::FontOptions(16.0f)));
-  g.drawText(
-      processor.getTrackDisplayName(rowNumber),
-      juce::Rectangle<int>(10, 0, getWidth() - 30, getHeight()),
-      juce::Justification::centredLeft,
-      true
-  );
-
-  // Green dot marks the row currently being played by the transport —
-  // independent of selection, so a selected-but-paused row doesn't read the
-  // same as one actually running.
-  if (rowNumber == processor.getCurrentTrackIndex() && processor.isPlaying()) {
-    constexpr float kDiameter = 8.0f;
-    const juce::Rectangle<float> dot(
-        static_cast<float>(getWidth()) - 18.0f,
-        (static_cast<float>(getHeight()) - kDiameter) * 0.5f,
-        kDiameter,
-        kDiameter
-    );
-    g.setColour(kPlayingGreen);
-    g.fillEllipse(dot);
-  }
-}
-
-// ── PlaylistListBox ─────────────────────────────────────────────────────────
-
-bool PlaylistListBox::isInterestedInDragSource(const SourceDetails& details) {
-  // Only accept the playlist's own row drags — not arbitrary external drops
-  // (files from Finder, drags from other components, etc.).
-  return details.description.toString().startsWith(kDragSourceTag);
-}
-
-void PlaylistListBox::itemDragMove(const SourceDetails& details) {
-  const int newRow = insertionIndexForPosition(details.localPosition.x, details.localPosition.y);
-  if (newRow == insertionRow) return;
-  insertionRow = newRow;
-  repaint();
-}
-
-void PlaylistListBox::itemDragExit(const SourceDetails&) {
-  if (insertionRow < 0) return;
-  insertionRow = -1;
-  repaint();
-}
-
-void PlaylistListBox::itemDropped(const SourceDetails& details) {
-  const juce::String source = details.description.toString();
-  const int fromIndex = source.fromFirstOccurrenceOf(":", false, false).getIntValue();
-  const int toIndex = insertionIndexForPosition(details.localPosition.x, details.localPosition.y);
-
-  // Clear the insertion marker first so any repaint triggered by the reorder
-  // callback doesn't briefly show a stale line.
-  insertionRow = -1;
-  repaint();
-
-  if (onReorder) onReorder(fromIndex, toIndex);
-}
-
-void PlaylistListBox::paintOverChildren(juce::Graphics& g) {
-  if (insertionRow < 0) return;
-
-  // y = bottom of the row above the insertion point, or 0 if we're above the
-  // very first row. getRowPosition handles scroll so the line tracks correctly
-  // when the list is scrolled.
-  const int y =
-      (insertionRow > 0)
-          ? getRowPosition(insertionRow - 1, /*relativeToComponentTopLeft=*/true).getBottom()
-          : 0;
-
-  g.setColour(kPlayingGreen);
-  g.fillRect(0, y - 1, getWidth(), 2);
-}
-
-int PlaylistListBox::insertionIndexForPosition(int x, int y) const {
-  const int numRows = getListBoxModel() != nullptr ? getListBoxModel()->getNumRows() : 0;
-  if (numRows == 0) return 0;
-
-  const int row = getRowContainingPosition(x, y);
-  if (row < 0) {
-    // Above the first row or below the last — clamp to an end.
-    return (y < 0) ? 0 : numRows;
-  }
-
-  // Upper half of the row → insert above it; lower half → insert below.
-  const auto rowBounds = getRowPosition(row, /*relativeToComponentTopLeft=*/true);
-  return (y < rowBounds.getCentreY()) ? row : row + 1;
-}
 
 // ── TrackPlayerEditor ───────────────────────────────────────────────────────
 
 TrackPlayerEditor::TrackPlayerEditor(TrackPlayerProcessor& p)
     : AudioProcessorEditor(&p), player(p) {
-  const int editorW = juce::jlimit(kMinEditorW, kMaxEditorW, player.getEditorWidth());
-  const int editorH = juce::jlimit(kMinEditorH, kMaxEditorH, player.getEditorHeight());
+  const int editorW = juce::jlimit(ui::kMinEditorW, ui::kMaxEditorW, player.getEditorWidth());
+  const int editorH = juce::jlimit(ui::kMinEditorH, ui::kMaxEditorH, player.getEditorHeight());
 
-  setLookAndFeel(&editorLookAndFeel());
+  setLookAndFeel(&ui::editorLookAndFeel());
   setSize(editorW, editorH);
-  setResizeLimits(kMinEditorW, kMinEditorH, kMaxEditorW, kMaxEditorH);
+  setResizeLimits(ui::kMinEditorW, ui::kMinEditorH, ui::kMaxEditorW, ui::kMaxEditorH);
   setResizable(true, true);
 
   playlistBox.setModel(this);
   playlistBox.setRowHeight(34);
   playlistBox.setMultipleSelectionEnabled(false);
-  playlistBox.setColour(juce::ListBox::backgroundColourId, kPlaylistBackground);
+  playlistBox.setColour(juce::ListBox::backgroundColourId, ui::kPlaylistBackground);
   playlistBox.setColour(juce::ListBox::outlineColourId, juce::Colours::transparentBlack);
-  playlistBox.setLookAndFeel(&playlistLookAndFeel());
+  playlistBox.setLookAndFeel(&ui::playlistLookAndFeel());
   if (auto* viewport = playlistBox.getViewport())
-    viewport->setScrollBarThickness(playlistLookAndFeel().getDefaultScrollbarWidth());
+    viewport->setScrollBarThickness(ui::playlistLookAndFeel().getDefaultScrollbarWidth());
   playlistBox.setReorderAction([this](int fromIndex, int toIndex) {
     player.reorderTrack(fromIndex, toIndex);
     // reorderTrack's `toIndex` is an insertion point in the original list;
@@ -375,11 +53,11 @@ TrackPlayerEditor::TrackPlayerEditor(TrackPlayerProcessor& p)
   addAndMakeVisible(playlistBox);
 
   addButton.onClick = [this] { openAddTrackDialog(); };
-  styleTransportButton(addButton);
+  ui::styleTransportButton(addButton);
   addAndMakeVisible(addButton);
 
   removeButton.onClick = [this] { removeSelectedTrack(); };
-  styleTransportButton(removeButton);
+  ui::styleTransportButton(removeButton);
   addAndMakeVisible(removeButton);
 
   playButton.onClick = [this] {
@@ -388,15 +66,15 @@ TrackPlayerEditor::TrackPlayerEditor(TrackPlayerProcessor& p)
     // for the next timer tick.
     refresh();
   };
-  styleTransportButton(playButton);
+  ui::styleTransportButton(playButton);
   addAndMakeVisible(playButton);
 
   progressSlider.setSliderStyle(juce::Slider::LinearHorizontal);
   progressSlider.setTextBoxStyle(juce::Slider::NoTextBox, false, 0, 0);
-  progressSlider.setColour(juce::Slider::trackColourId, kAccentBlue);
-  progressSlider.setColour(juce::Slider::backgroundColourId, kProgressTrack);
-  progressSlider.setColour(juce::Slider::thumbColourId, kProgressThumb);
-  progressSlider.setLookAndFeel(&transportSliderLookAndFeel());
+  progressSlider.setColour(juce::Slider::trackColourId, ui::kAccentBlue);
+  progressSlider.setColour(juce::Slider::backgroundColourId, ui::kProgressTrack);
+  progressSlider.setColour(juce::Slider::thumbColourId, ui::kProgressThumb);
+  progressSlider.setLookAndFeel(&ui::transportSliderLookAndFeel());
   // Normalised [0,1] — the slider is track-agnostic; we multiply by the
   // current track length on seek.
   progressSlider.setRange(0.0, 1.0);
@@ -414,7 +92,7 @@ TrackPlayerEditor::TrackPlayerEditor(TrackPlayerProcessor& p)
   auto initTimeLabel = [this](juce::Label& label, juce::Justification j) {
     label.setJustificationType(j);
     label.setFont(juce::Font(juce::FontOptions(15.0f)));
-    label.setColour(juce::Label::textColourId, kTimeText);
+    label.setColour(juce::Label::textColourId, ui::kTimeText);
     label.setText("0:00", juce::dontSendNotification);
     addAndMakeVisible(label);
   };
@@ -440,11 +118,11 @@ TrackPlayerEditor::~TrackPlayerEditor() {
 }
 
 void TrackPlayerEditor::paint(juce::Graphics& g) {
-  g.fillAll(kPlaylistBackground);
+  g.fillAll(ui::kPlaylistBackground);
 
   auto controlsBand = getLocalBounds();
-  controlsBand.removeFromTop(juce::jmax(0, getHeight() - kControlsBarH));
-  g.setColour(kControlsBackground);
+  controlsBand.removeFromTop(juce::jmax(0, getHeight() - ui::kControlsBarH));
+  g.setColour(ui::kControlsBackground);
   g.fillRect(controlsBand);
 }
 
@@ -453,14 +131,14 @@ void TrackPlayerEditor::resized() {
 
   auto bounds = getLocalBounds();
   auto controlsBand = getLocalBounds();
-  controlsBand.removeFromTop(juce::jmax(0, getHeight() - kControlsBarH));
+  controlsBand.removeFromTop(juce::jmax(0, getHeight() - ui::kControlsBarH));
 
   // Bottom transport row, left→right: play, elapsed, slider, total, Add, Remove.
-  auto controls = controlsBand.reduced(kEditorPadding, kControlsVerticalMargin);
-  bounds.removeFromBottom(kControlsBarH);
-  bounds.removeFromTop(kPlaylistTopInset);
-  bounds.removeFromLeft(kEditorPadding);
-  bounds.setRight(getWidth() - kPlaylistRightInset);
+  auto controls = controlsBand.reduced(ui::kEditorPadding, ui::kControlsVerticalMargin);
+  bounds.removeFromBottom(ui::kControlsBarH);
+  bounds.removeFromTop(ui::kPlaylistTopInset);
+  bounds.removeFromLeft(ui::kEditorPadding);
+  bounds.setRight(getWidth() - ui::kPlaylistRightInset);
   playlistBox.setBounds(bounds);
 
   constexpr int kButtonH = 34;
