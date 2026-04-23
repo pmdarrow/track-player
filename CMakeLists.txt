@@ -44,7 +44,7 @@ juce_add_plugin(TrackPlayer
     PLUGIN_MANUFACTURER_CODE  Pdar
     PLUGIN_CODE               Trkp
     PRODUCT_NAME              "Track Player"
-    FORMATS                   AU
+    FORMATS                   AU Standalone
     IS_SYNTH                  TRUE
     NEEDS_MIDI_INPUT          TRUE
     NEEDS_MIDI_OUTPUT         FALSE
@@ -66,7 +66,6 @@ target_compile_definitions(TrackPlayer PUBLIC
     JUCE_WEB_BROWSER=0
     JUCE_USE_CURL=0
     JUCE_VST3_CAN_REPLACE_VST2=0
-    JUCE_DISPLAY_SPLASH_SCREEN=0
     JUCE_REPORT_APP_USAGE=0
 )
 
@@ -75,6 +74,7 @@ target_link_libraries(TrackPlayer
         juce::juce_audio_utils
         juce::juce_audio_processors
         juce::juce_audio_formats
+        juce::juce_audio_devices
         juce::juce_gui_basics
         juce::juce_core
         juce::juce_data_structures

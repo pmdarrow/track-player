@@ -1,11 +1,16 @@
 # Track Player
 
-An Audio Unit instrument plugin for macOS that plays a WAV file on a button
-press. Built with [JUCE](https://juce.com/) 8 and CMake.
+An Audio Unit instrument plugin for macOS that plays a WAV playlist, with a
+standalone app target for development. Built with [JUCE](https://juce.com/) 8
+and CMake.
 
-The plugin currently expects the track at
-`~/Downloads/Luke Melville - El Monte.wav`. If the file isn't there the Play
-button is disabled and the UI shows a "file not found" message.
+Features:
+
+- Add and remove WAV files from anywhere on disk.
+- Play / pause and seek via a draggable progress slider.
+- Single click to select a track, double click (or the play button) to play it.
+- Auto-advances to the next track at end-of-file.
+- Playlist and current track persist in the plugin's host state.
 
 ## Requirements
 
@@ -33,11 +38,16 @@ cmake --build build
 The first configure step clones JUCE 8.0.12 into `build/_deps/` via
 `FetchContent`; this can take a few minutes. Subsequent builds are incremental.
 
-On success the Audio Unit bundle is produced at:
+On success two artefacts are produced:
 
 ```
-build/TrackPlayer_artefacts/AU/Track Player.component
+build/TrackPlayer_artefacts/AU/Track Player.component   # the AU plugin
+build/TrackPlayer_artefacts/Standalone/Track Player.app # dev-only standalone app
 ```
+
+The standalone app is handy for iterating on the UI without having to open a
+DAW — it wraps the same editor in a window and routes audio to the default
+output device.
 
 For a universal (Intel + Apple Silicon) distribution build, override the
 architecture at configure time:
@@ -73,8 +83,16 @@ four-character code and `Pdar` is the manufacturer code — both defined in
 1. Launch an AU-compatible host (Logic Pro, GarageBand, Ableton Live 11+,
    Reaper, AUM, …).
 2. Create a new instrument track and choose **Peter Darrow → Track Player**.
-3. Click **Play** to start the track; click again to stop. Playback auto-stops
-   at the end of the file. Position / length is displayed beneath the button.
+3. Click **Add** to pick one or more WAV files (from anywhere on disk) and
+   drop them into the playlist. **Remove** deletes the selected track.
+4. Single-click a row to select it. Double-click a row (or use the round play
+   button in the transport row) to start playback. The progress slider scrubs
+   the current track; seeks commit on release. Playback auto-advances to the
+   next track at end-of-file.
+
+The playlist and the currently-loaded track are persisted in the plugin's host
+state, so reopening a session restores everything (files whose paths no longer
+resolve are silently dropped).
 
 ## Development setup
 
@@ -105,27 +123,3 @@ anything would be reformatted. Bypass with `git commit --no-verify`.
 | `tidy`          | Run clang-tidy across the sources.                        |
 
 Run any of them with `cmake --build build --target <name>`.
-
-Canonical configs:
-
-- Style — [.clang-format](.clang-format)
-- Lint  — [.clang-tidy](.clang-tidy) (rationale for each disabled check is inline)
-
-## Project layout
-
-```
-.
-├── CMakeLists.txt
-├── README.md
-├── .clang-format                    # code style
-├── .clang-tidy                      # lint config
-├── .githooks/pre-commit             # checked-in pre-commit hook
-└── Source/
-    ├── PluginProcessor.h / .cpp     # juce::AudioProcessor subclass
-    └── PluginEditor.h   / .cpp      # juce::AudioProcessorEditor subclass
-```
-
-## Upgrading JUCE
-
-Bump the `GIT_TAG` in [CMakeLists.txt](CMakeLists.txt) and re-run the configure
-step. Any 8.x tag should be drop-in compatible.

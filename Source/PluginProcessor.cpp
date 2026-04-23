@@ -2,76 +2,39 @@
 
 #include "PluginEditor.h"
 
-namespace {
-// Temporary: read the track from a fixed path under the user's Downloads
-// folder. This keeps the audio out of the repo while the project is being
-// scaffolded. A future revision will load the file from a user-chosen path or
-// bundle it into the plugin via juce_add_binary_data.
-constexpr const char* kTrackFilename = "Luke Melville - El Monte.wav";
-}  // namespace
-
 TrackPlayerProcessor::TrackPlayerProcessor()
     : AudioProcessor(
           BusesProperties().withOutput("Output", juce::AudioChannelSet::stereo(), true)
       ) {
   formatManager.registerBasicFormats();
-  loadAudioFile();
+  // The read-ahead thread lives for the lifetime of the processor — starting
+  // and stopping it per track would add latency on every track change and
+  // offers no benefit, since there's only ever one reader source attached.
+  readAheadThread.startThread();
 }
 
-TrackPlayerProcessor::~TrackPlayerProcessor() = default;
-
-void TrackPlayerProcessor::loadAudioFile() {
-  // Decode the track from disk once at construction so processBlock never
-  // touches the filesystem. The whole file lives in fileBuffer at its native
-  // sample rate; ResamplingAudioSource below adapts to the host rate.
-  const juce::File trackFile = juce::File::getSpecialLocation(juce::File::userHomeDirectory)
-                                   .getChildFile("Downloads")
-                                   .getChildFile(kTrackFilename);
-
-  if (!trackFile.existsAsFile()) {
-    return;  // Button stays disabled; editor shows a "file not found" status.
-  }
-
-  std::unique_ptr<juce::AudioFormatReader> reader(formatManager.createReaderFor(trackFile));
-  if (reader == nullptr) {
-    jassertfalse;  // decoder failed for an existing file
-    return;
-  }
-
-  fileSampleRate = reader->sampleRate;
-
-  const int numChannels = static_cast<int>(reader->numChannels);
-  const int numSamples = static_cast<int>(reader->lengthInSamples);
-
-  fileBuffer.setSize(numChannels, numSamples, false, true, false);
-  // The last two args map source channels to buffer channels: always read the
-  // left; only read the right if the source is stereo (mono sources are
-  // duplicated to stereo output downstream in processBlock).
-  reader->read(&fileBuffer, 0, numSamples, 0, true, numChannels > 1);
-
-  // MemoryAudioSource provides a non-looping, seekable source over fileBuffer.
-  // Wrapping it in ResamplingAudioSource lets us keep fileBuffer at the file's
-  // native rate while still emitting samples at whatever the host asks for.
-  memorySource = std::make_unique<juce::MemoryAudioSource>(fileBuffer, false, false);
-  resamplingSource = std::make_unique<juce::ResamplingAudioSource>(
-      memorySource.get(), false, juce::jmax(1, numChannels)
-  );
+TrackPlayerProcessor::~TrackPlayerProcessor() {
+  // Must tear down in source-first order: detach the source from the transport
+  // (which also releases its internal BufferingAudioSource pulling on our
+  // reader) before we stop the read-ahead thread, otherwise the thread could
+  // still be mid-read when we destroy it.
+  unloadTransport();
+  readAheadThread.stopThread(2000);
 }
 
 void TrackPlayerProcessor::prepareToPlay(double sampleRate, int samplesPerBlock) {
-  hostSampleRate = sampleRate;
-
-  // The host can change sample rate between sessions (or after bus config
-  // changes), so we always recompute the ratio here. ratio > 1.0 speeds the
-  // source up (host rate lower than file rate) and < 1.0 slows it down.
-  if (resamplingSource != nullptr && fileSampleRate > 0.0) {
-    resamplingSource->setResamplingRatio(fileSampleRate / sampleRate);
-    resamplingSource->prepareToPlay(samplesPerBlock, sampleRate);
-  }
+  transport.prepareToPlay(samplesPerBlock, sampleRate);
+  // Pre-allocate a stereo scratch sized to the host's block size. We always
+  // render the transport into this fixed 2-channel layout and then copy/mix
+  // into whatever the output bus is, so channel-count mismatches (e.g. mono
+  // file on a stereo bus) have a single uniform code path.
+  stereoScratch.setSize(2, samplesPerBlock, false, false, true);
+  isPrepared = true;
 }
 
 void TrackPlayerProcessor::releaseResources() {
-  if (resamplingSource != nullptr) resamplingSource->releaseResources();
+  transport.releaseResources();
+  isPrepared = false;
 }
 
 bool TrackPlayerProcessor::isBusesLayoutSupported(const BusesLayout& layouts) const {
@@ -80,67 +43,30 @@ bool TrackPlayerProcessor::isBusesLayoutSupported(const BusesLayout& layouts) co
 }
 
 void TrackPlayerProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer&) {
-  // Denormal floats cause huge CPU stalls on x86. Force FTZ/DAZ for the block.
   const juce::ScopedNoDenormals noDenormals;
-
-  // Always emit defined silence first so every early-return below produces a
-  // clean output buffer.
   buffer.clear();
 
-  if (resamplingSource == nullptr || memorySource == nullptr) return;
+  if (!isPrepared) return;
 
-  // Acquire pairs with the release stores in startPlayback()/stopPlayback() so
-  // any UI-thread writes that preceded the flag flip are visible here.
-  if (!playing.load(std::memory_order_acquire)) return;
+  const int numSamples = buffer.getNumSamples();
+  const int numOut = buffer.getNumChannels();
 
-  // One-shot seek-and-flush. exchange() makes this self-clearing so each
-  // reset request is consumed exactly once — multiple rapid presses from the
-  // UI still produce a single reset on the next audio tick.
-  if (resetRequested.exchange(false, std::memory_order_acq_rel)) {
-    memorySource->setNextReadPosition(0);
-    resamplingSource->flushBuffers();
-  }
+  stereoScratch.clear(0, numSamples);
+  const juce::AudioSourceChannelInfo info(&stereoScratch, 0, numSamples);
+  // AudioTransportSource short-circuits to silence when it has no source,
+  // isn't playing, or has reached EOF, so calling it unconditionally is safe
+  // and removes a class of "did I remember to check X?" branches.
+  transport.getNextAudioBlock(info);
 
-  // The host's bus layout may not match the file's channel count (e.g. mono
-  // bus on a stereo file, or vice versa). When they match we can render
-  // directly into the output buffer; otherwise we render into a temp sized to
-  // the file and mix/duplicate into the output.
-  const int numOutputChannels = buffer.getNumChannels();
-  const int numFileChannels = fileBuffer.getNumChannels();
-
-  if (numOutputChannels == numFileChannels) {
-    const juce::AudioSourceChannelInfo info(buffer);
-    resamplingSource->getNextAudioBlock(info);
-  } else {
-    juce::AudioBuffer<float> temp(numFileChannels, buffer.getNumSamples());
-    temp.clear();
-    const juce::AudioSourceChannelInfo info(&temp, 0, buffer.getNumSamples());
-    resamplingSource->getNextAudioBlock(info);
-
-    if (numFileChannels == 1 && numOutputChannels >= 2) {
-      // Mono → stereo (or wider): duplicate L to R; any extra channels stay
-      // silent from the buffer.clear() above.
-      buffer.copyFrom(0, 0, temp, 0, 0, buffer.getNumSamples());
-      buffer.copyFrom(1, 0, temp, 0, 0, buffer.getNumSamples());
-    } else if (numFileChannels >= 2 && numOutputChannels == 1) {
-      // Stereo (or wider) → mono: average L+R. Simple fold-down; -6 dB
-      // relative to summed energy but prevents clipping on correlated content.
-      buffer.copyFrom(0, 0, temp, 0, 0, buffer.getNumSamples());
-      buffer.addFrom(0, 0, temp, 1, 0, buffer.getNumSamples());
-      buffer.applyGain(0.5f);
-    } else {
-      for (int ch = 0; ch < juce::jmin(numOutputChannels, numFileChannels); ++ch)
-        buffer.copyFrom(ch, 0, temp, ch, 0, buffer.getNumSamples());
-    }
-  }
-
-  // Natural end of file. Re-arm resetRequested so the next startPlayback()
-  // begins from the top even though the UI-side startPlayback() also sets it
-  // — belt-and-braces in case the UI observes isPlaying() going false and
-  // tries to resume without re-pressing Play.
-  if (memorySource->getNextReadPosition() >= memorySource->getTotalLength()) {
-    playing.store(false, std::memory_order_release);
-    resetRequested.store(true, std::memory_order_release);
+  if (numOut >= 2) {
+    buffer.copyFrom(0, 0, stereoScratch, 0, 0, numSamples);
+    buffer.copyFrom(1, 0, stereoScratch, 1, 0, numSamples);
+  } else if (numOut == 1) {
+    // Mono bus: sum L+R with a 0.5 gain. -6 dB versus summed energy, but
+    // prevents clipping on correlated content.
+    buffer.copyFrom(0, 0, stereoScratch, 0, 0, numSamples);
+    buffer.addFrom(0, 0, stereoScratch, 1, 0, numSamples);
+    buffer.applyGain(0.5f);
   }
 }
 
@@ -148,35 +74,188 @@ juce::AudioProcessorEditor* TrackPlayerProcessor::createEditor() {
   return new TrackPlayerEditor(*this);
 }
 
-void TrackPlayerProcessor::getStateInformation(juce::MemoryBlock&) {}
-void TrackPlayerProcessor::setStateInformation(const void*, int) {}
+// ── Playlist / transport ─────────────────────────────────────────────────────
 
-void TrackPlayerProcessor::startPlayback() {
-  if (!hasLoadedAudio()) return;
-
-  // Order matters: arm the reset flag *before* flipping `playing`, so the very
-  // first audio block observing playing=true also observes resetRequested=true
-  // and seeks to 0 instead of picking up wherever the source happened to be.
-  resetRequested.store(true, std::memory_order_release);
-  playing.store(true, std::memory_order_release);
+juce::String TrackPlayerProcessor::getTrackDisplayName(int index) const {
+  if (index < 0 || index >= static_cast<int>(playlist.size())) return {};
+  return playlist[static_cast<size_t>(index)].displayName;
 }
 
-void TrackPlayerProcessor::stopPlayback() {
-  // Stop output first, then arm a reset so the next Start begins from the top.
-  playing.store(false, std::memory_order_release);
-  resetRequested.store(true, std::memory_order_release);
+void TrackPlayerProcessor::addTrack(const juce::File& file) {
+  if (!file.existsAsFile()) return;
+
+  Track track;
+  track.file = file;
+  track.displayName = file.getFileName();
+  playlist.push_back(std::move(track));
+
+  // First track becomes the current selection so the transport has something
+  // loaded and the progress UI has a meaningful length to display. We load
+  // stopped — user-driven Play starts audio.
+  if (playlist.size() == 1) loadIntoTransport(0, false);
 }
 
-double TrackPlayerProcessor::getPlaybackPositionSeconds() const noexcept {
-  if (memorySource == nullptr || fileSampleRate <= 0.0) return 0.0;
+void TrackPlayerProcessor::removeTrack(int index) {
+  if (index < 0 || index >= static_cast<int>(playlist.size())) return;
 
-  return static_cast<double>(memorySource->getNextReadPosition()) / fileSampleRate;
+  const bool wasCurrent = (index == currentIndex);
+  playlist.erase(playlist.begin() + index);
+
+  if (wasCurrent) {
+    unloadTransport();
+    if (!playlist.empty()) {
+      // Prefer the item that slid into the removed slot; fall back to the new
+      // last item if we removed the tail.
+      const int newIndex = juce::jmin(index, static_cast<int>(playlist.size()) - 1);
+      loadIntoTransport(newIndex, false);
+    }
+  } else if (index < currentIndex) {
+    // Entries above the current track shifted down by one; track the move so
+    // getCurrentTrackIndex() keeps pointing at the same file.
+    --currentIndex;
+  }
 }
 
-double TrackPlayerProcessor::getTotalLengthSeconds() const noexcept {
-  if (fileSampleRate <= 0.0) return 0.0;
+void TrackPlayerProcessor::reorderTrack(int fromIndex, int toIndex) {
+  const int size = static_cast<int>(playlist.size());
+  if (fromIndex < 0 || fromIndex >= size) return;
+  if (toIndex < 0 || toIndex > size) return;
+  // Dropping a row either immediately before or after itself is a no-op.
+  if (toIndex == fromIndex || toIndex == fromIndex + 1) return;
 
-  return static_cast<double>(fileBuffer.getNumSamples()) / fileSampleRate;
+  // `toIndex` is an insertion point in the *original* list. Once we erase
+  // `fromIndex`, anything above it shifts down by one, so the equivalent
+  // insertion point in the post-erase list is toIndex-1 when toIndex was
+  // past the erased slot.
+  const int adjustedTo = (toIndex > fromIndex) ? toIndex - 1 : toIndex;
+
+  Track moved = std::move(playlist[static_cast<size_t>(fromIndex)]);
+  playlist.erase(playlist.begin() + fromIndex);
+  playlist.insert(playlist.begin() + adjustedTo, std::move(moved));
+
+  // Transport state is unaffected — the underlying source hasn't changed,
+  // only its position in the list — but currentIndex needs to track wherever
+  // the currently-playing track ended up.
+  if (fromIndex == currentIndex) {
+    currentIndex = adjustedTo;
+  } else {
+    if (fromIndex < currentIndex) --currentIndex;
+    if (adjustedTo <= currentIndex) ++currentIndex;
+  }
+}
+
+void TrackPlayerProcessor::selectTrack(int index, bool andPlay) {
+  if (index < 0 || index >= static_cast<int>(playlist.size())) return;
+
+  if (index != currentIndex) {
+    loadIntoTransport(index, andPlay);
+    return;
+  }
+
+  if (andPlay && !transport.isPlaying()) transport.start();
+}
+
+void TrackPlayerProcessor::playPause() {
+  if (currentIndex < 0) return;
+
+  if (transport.isPlaying()) {
+    transport.stop();
+  } else {
+    // Rewind to the top if the previous playthrough ran to EOF, so pressing
+    // Play on a finished track restarts it rather than looking like a no-op.
+    if (transport.hasStreamFinished()) transport.setPosition(0.0);
+    transport.start();
+  }
+}
+
+void TrackPlayerProcessor::seekSeconds(double seconds) {
+  const double length = transport.getLengthInSeconds();
+  if (length <= 0.0) return;
+  transport.setPosition(juce::jlimit(0.0, length, seconds));
+}
+
+void TrackPlayerProcessor::loadIntoTransport(int index, bool andPlay) {
+  unloadTransport();
+
+  if (index < 0 || index >= static_cast<int>(playlist.size())) return;
+
+  const auto& track = playlist[static_cast<size_t>(index)];
+  std::unique_ptr<juce::AudioFormatReader> reader(formatManager.createReaderFor(track.file));
+  if (reader == nullptr) {
+    // Decoder failure (unsupported / corrupt / vanished file). Leave the
+    // transport empty so the UI shows 0:00 / 0:00 and the user can try
+    // another track.
+    currentIndex = -1;
+    return;
+  }
+
+  const double readerSampleRate = reader->sampleRate;
+  auto newSource = std::make_unique<juce::AudioFormatReaderSource>(reader.release(), true);
+
+  // ~0.75 s of read-ahead at 44.1 kHz. Gives the background thread plenty of
+  // runway to re-fill the buffer around seeks without burning memory.
+  constexpr int kReadAheadSamples = 32768;
+  transport.setSource(newSource.get(), kReadAheadSamples, &readAheadThread, readerSampleRate);
+
+  readerSource = std::move(newSource);
+  currentIndex = index;
+
+  if (andPlay) transport.start();
+}
+
+void TrackPlayerProcessor::unloadTransport() {
+  transport.stop();
+  // Clear the transport's source before resetting our owned pointer — setSource
+  // tears down the BufferingAudioSource wrapping readerSource, guaranteeing no
+  // background read can land on a freed reader.
+  transport.setSource(nullptr);
+  readerSource.reset();
+  currentIndex = -1;
+}
+
+// ── Persistence ──────────────────────────────────────────────────────────────
+
+void TrackPlayerProcessor::getStateInformation(juce::MemoryBlock& destData) {
+  juce::ValueTree state("TrackPlayerState");
+  state.setProperty("currentIndex", currentIndex, nullptr);
+
+  juce::ValueTree list("Playlist");
+  for (const auto& track : playlist) {
+    juce::ValueTree entry("Track");
+    entry.setProperty("path", track.file.getFullPathName(), nullptr);
+    list.appendChild(entry, nullptr);
+  }
+  state.appendChild(list, nullptr);
+
+  juce::MemoryOutputStream out(destData, false);
+  state.writeToStream(out);
+}
+
+void TrackPlayerProcessor::setStateInformation(const void* data, int sizeInBytes) {
+  if (sizeInBytes <= 0) return;
+  auto state = juce::ValueTree::readFromData(data, static_cast<size_t>(sizeInBytes));
+  if (!state.isValid() || !state.hasType("TrackPlayerState")) return;
+
+  unloadTransport();
+  playlist.clear();
+
+  auto list = state.getChildWithName("Playlist");
+  for (int i = 0; i < list.getNumChildren(); ++i) {
+    const juce::File file(list.getChild(i).getProperty("path").toString());
+    // Silently drop entries whose files no longer exist — a plugin recall on
+    // a machine that's missing some of the original files should still open
+    // cleanly with whatever remains.
+    if (file.existsAsFile()) {
+      playlist.push_back({file, file.getFileName()});
+    }
+  }
+
+  const int savedIndex = state.getProperty("currentIndex", -1);
+  if (savedIndex >= 0 && savedIndex < static_cast<int>(playlist.size())) {
+    loadIntoTransport(savedIndex, false);
+  } else if (!playlist.empty()) {
+    loadIntoTransport(0, false);
+  }
 }
 
 // Required factory function the JUCE plugin wrapper calls to instantiate the
