@@ -16,6 +16,11 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 # Emit build/compile_commands.json for clang-tidy / IDE tooling.
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
+option(TRACK_PLAYER_COPY_PLUGIN_AFTER_BUILD
+    "Copy built plugin formats into the current user's plugin folders"
+    ON
+)
+
 include(FetchContent)
 
 FetchContent_Declare(
@@ -50,7 +55,7 @@ juce_add_plugin(TrackPlayer
     NEEDS_MIDI_OUTPUT         FALSE
     IS_MIDI_EFFECT            FALSE
     EDITOR_WANTS_KEYBOARD_FOCUS FALSE
-    COPY_PLUGIN_AFTER_BUILD   TRUE
+    COPY_PLUGIN_AFTER_BUILD   ${TRACK_PLAYER_COPY_PLUGIN_AFTER_BUILD}
 )
 
 set(TRACK_PLAYER_SOURCES

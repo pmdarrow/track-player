@@ -27,6 +27,30 @@ Optional, for dev tooling:
 - `brew install llvm` — provides `clang-format` and `clang-tidy` used by the
   `format` / `format-check` / `tidy` CMake targets and the git pre-commit hook.
 
+## Installing a release
+
+Run the installer directly from the repository:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/pmdarrow/track-player/main/scripts/install.sh | bash
+```
+
+The installer downloads the latest macOS release zip from
+[GitHub Releases](https://github.com/pmdarrow/track-player/releases), extracts
+`Track Player.component`, and copies it into the system-wide Audio Unit folder:
+
+```
+/Library/Audio/Plug-Ins/Components/Track Player.component
+```
+
+Because this is a system-wide install, macOS will ask for an administrator
+password. The installer also removes quarantine metadata from the installed
+component, ad-hoc signs it, and refreshes the Audio Unit registrar. Restart your
+DAW or rescan Audio Units after installing.
+
+This release flow is intended for trusted manual installation. The component is
+not Developer ID signed or notarized.
+
 ## Building
 
 From the project root:
@@ -107,7 +131,7 @@ the CMake targets and git hook locate automatically.
 ### One-time setup after cloning
 
 ```bash
-brew install llvm                           # clang-format + clang-tidy
+brew install llvm gh                        # clang-format, clang-tidy, GitHub CLI
 git config core.hooksPath .githooks         # activate the checked-in hook
 ```
 
@@ -124,3 +148,29 @@ anything would be reformatted. Bypass with `git commit --no-verify`.
 | `tidy`          | Run clang-tidy across the sources.                        |
 
 Run any of them with `cmake --build build --target <name>`.
+
+### Creating a GitHub release
+
+The release helper builds a universal AU, packages the component with
+`install.sh`, creates `dist/track-player-<version>-macos.zip`, and uploads it
+to a GitHub release tagged `v<version>`. Before releasing, bump the version in
+`project(TrackPlayer VERSION ...)` in `CMakeLists.txt` and commit that change.
+The release script reads that CMake version automatically:
+
+```bash
+bash scripts/create-github-release.sh
+```
+
+Use `--draft` to create a draft release first:
+
+```bash
+bash scripts/create-github-release.sh --draft
+```
+
+The script requires a clean working tree and a current branch that is pushed to
+GitHub, so the release tag matches the packaged source. To test the packaging
+without publishing a release:
+
+```bash
+bash scripts/create-github-release.sh --dry-run
+```
