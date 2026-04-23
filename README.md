@@ -7,7 +7,7 @@ audio files. Built with
 Inspired by [Simple Audio Player Swift](https://github.com/pmdarrow/simple-audio-player-swift),
 but written as an AU instrument plugin with C++ & JUCE.
 
-![Simple Audio Player plugin UI](docs/screenshot.png)
+<img src="docs/screenshot.png" alt="Simple Audio Player plugin UI" width="586">
 
 Features:
 
