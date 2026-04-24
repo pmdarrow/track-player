@@ -177,3 +177,7 @@ without publishing a release:
 ```bash
 bash scripts/create-github-release.sh --dry-run
 ```
+
+## License
+
+This project is released under the [MIT License](LICENSE).
